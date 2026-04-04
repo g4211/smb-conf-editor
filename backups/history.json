@@ -1,0 +1,39 @@
+{
+  "backups": [
+    {
+      "filename": "smb_20260402_084003.conf",
+      "timestamp": "2026-04-02T08:40:03",
+      "comment": "直接編集による変更",
+      "exclude_from_deletion": true,
+      "category": "direct_edit"
+    },
+    {
+      "filename": "smb_20260403_171923.conf",
+      "timestamp": "2026-04-03T17:19:23",
+      "comment": "共有設定の変更: [a] linux",
+      "exclude_from_deletion": false,
+      "category": "shared_folder"
+    },
+    {
+      "filename": "smb_20260403_172134.conf",
+      "timestamp": "2026-04-03T17:21:34",
+      "comment": "共有設定の変更: [a] linux、[srv] share",
+      "exclude_from_deletion": false,
+      "category": "shared_folder"
+    },
+    {
+      "filename": "smb_20260404_130456.conf",
+      "timestamp": "2026-04-04T13:04:56",
+      "comment": "共有設定の変更: [srv] share",
+      "exclude_from_deletion": false,
+      "category": "shared_folder"
+    },
+    {
+      "filename": "smb_20260404_141648.conf",
+      "timestamp": "2026-04-04T14:16:48",
+      "comment": "共有設定の変更: [srv] share",
+      "exclude_from_deletion": false,
+      "category": "shared_folder"
+    }
+  ]
+}

@@ -1,0 +1,356 @@
+# -*- coding: utf-8 -*-
+"""
+メインアプリケーションモジュール
+tkinter.ttk + sv_ttk (Sun Valleyテーマ) によるGUIアプリケーション。
+4つのタブ（共有設定、サーバー設定、ツール、バックアップ）を管理する。
+[適用]ボタンはタブ上段に配置し、共有設定+サーバー設定を一括で適用する。
+"""
+
+import os
+import subprocess
+import sys
+import tkinter as tk
+from tkinter import ttk, messagebox
+
+try:
+    import sv_ttk
+except ImportError:
+    sv_ttk = None
+
+from . import constants as const
+from .config_manager import ConfigManager
+from .backup_manager import BackupManager
+from .apply_manager import ApplyManager
+from .smb_parser import SmbConfParser, SmbConfig
+from .smb_writer import SmbConfWriter
+from . import system_utils
+from .tabs.shares_tab import SharesTab
+from .tabs.global_tab import GlobalTab
+from .tabs.advanced_tab import AdvancedTab
+from .tabs.history_tab import HistoryTab
+
+
+class SmbConfEditorApp:
+    """Samba設定エディター メインアプリケーションクラス"""
+
+    def __init__(self):
+        """アプリケーションを初期化する"""
+        # tkinter ルートウィンドウを作成
+        self._root = tk.Tk()
+        self._root.title(f"{const.APP_NAME} v{const.APP_VERSION}")
+        self._root.geometry(f"{const.WINDOW_WIDTH}x{const.WINDOW_HEIGHT}")
+        self._root.minsize(800, 600)
+
+        # マネージャーの初期化
+        self._config_manager = ConfigManager()
+
+        # Sun Valley テーマを適用（config.jsonの読み込み後に実行）
+        self._apply_theme()
+
+        self._parser = SmbConfParser()
+        self._config: SmbConfig = None  # パース済みのsmb.conf
+        self._users = []     # システムユーザー一覧
+        self._samba_users_cache: dict[str, int] = {}  # {username: samba_status} キャッシュ
+        self._samba_users_loaded = False  # キャッシュ済みフラグ
+
+        # バックアップマネージャーの初期化
+        backup_dir = self._config_manager.get_backup_dir()
+        max_backups = self._config_manager.get("max_backups", const.DEFAULT_MAX_BACKUPS)
+        self._backup_manager = BackupManager(backup_dir, max_backups)
+
+        # 適用マネージャーの初期化
+        self._apply_manager = ApplyManager(self._config_manager, self._backup_manager)
+
+        # 初回起動チェック
+        if not self._startup_checks():
+            return
+
+        # UIを構築
+        self._build_ui()
+
+        # データを読み込む
+        self.reload_data()
+
+    def _detect_os_theme(self) -> str:
+        """システムのダーク/ライト設定を検出する"""
+        try:
+            result = subprocess.run(
+                ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                output = result.stdout.strip().strip("'")
+                if "dark" in output:
+                    return "dark"
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+        # 検出できない場合はライトをデフォルトにする
+        return "light"
+
+    def _apply_theme(self) -> None:
+        """Sun Valley テーマを適用する（保存済み設定 > OS設定 > ライト）"""
+        if sv_ttk is not None:
+            saved_theme = self._config_manager.get("theme", None)
+            if saved_theme in ("dark", "light"):
+                theme = saved_theme
+            else:
+                theme = self._detect_os_theme()
+                self._config_manager.set("theme", theme)
+                self._config_manager.save()
+            sv_ttk.set_theme(theme)
+        else:
+            print("警告: sv_ttk がインストールされていません。デフォルトテーマを使用します。")
+
+    def _startup_checks(self) -> bool:
+        """初回起動時のチェックを行う"""
+        errors = []
+
+        # Sambaの必要コマンドがインストールされているか確認
+        cmd_status = system_utils.check_samba_installed()
+        for cmd, installed in cmd_status.items():
+            if not installed:
+                errors.append(f"コマンド '{cmd}' がインストールされていません")
+
+        # smb.confが存在するか確認
+        if not system_utils.check_smb_conf_exists():
+            errors.append(f"設定ファイル '{const.SMB_CONF_PATH}' が見つかりません")
+
+        # ヘルパースクリプトが存在するか確認
+        helper_path = const.get_helper_path()
+        if not os.path.isfile(helper_path):
+            errors.append(f"ヘルパースクリプトが見つかりません: {helper_path}")
+        else:
+            if not os.access(helper_path, os.X_OK):
+                try:
+                    os.chmod(helper_path, 0o755)
+                except OSError:
+                    errors.append(f"ヘルパースクリプトに実行権限を付与できません: {helper_path}")
+
+        if errors:
+            error_msg = "\n".join(f"・{e}" for e in errors)
+            messagebox.showwarning(
+                "起動チェック",
+                f"以下の問題が検出されました:\n\n{error_msg}\n\n"
+                "一部の機能が正しく動作しない可能性があります。",
+                parent=self._root
+            )
+
+        return True
+
+    def _build_ui(self) -> None:
+        """UIウィジェットを構築する"""
+        # メインフレーム
+        main_frame = ttk.Frame(self._root)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # === 上段: [適用][再読み込み][テーマ] ボタンバー ===
+        toolbar = ttk.Frame(main_frame)
+        toolbar.pack(fill=tk.X, padx=5, pady=(5, 0))
+
+        # [適用]ボタン（最も目立つ位置に配置）
+        self._apply_btn = ttk.Button(
+            toolbar, text="✓ 適用", command=self._on_apply_all
+        )
+        self._apply_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+        # 説明ラベル
+        ttk.Label(
+            toolbar,
+            text="共有設定とサーバー設定をまとめて smb.conf に適用します",
+            font=("", 9), foreground="gray"
+        ).pack(side=tk.LEFT)
+
+        # テーマ切り替えボタン（右端）
+        self._theme_btn = ttk.Button(
+            toolbar, text="🌙/☀ テーマ", width=10,
+            command=self._toggle_theme
+        )
+        self._theme_btn.pack(side=tk.RIGHT, padx=(5, 0))
+
+        # 再読み込みボタン
+        ttk.Button(
+            toolbar, text="🔄 再読み込み", width=12,
+            command=self.reload_data
+        ).pack(side=tk.RIGHT, padx=(5, 0))
+
+        # セパレーター
+        ttk.Separator(main_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=5, pady=3)
+
+        # === ノートブック（タブコンテナ） ===
+        self._notebook = ttk.Notebook(main_frame)
+        self._notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
+
+        # 各タブを作成
+        self._shares_tab = SharesTab(self._notebook, self)
+        self._global_tab = GlobalTab(self._notebook, self)
+        self._advanced_tab = AdvancedTab(self._notebook, self)
+        self._history_tab = HistoryTab(self._notebook, self)
+
+        # タブを追加（名称改善済み）
+        self._notebook.add(self._shares_tab, text=" 📁 共有設定 ")
+        self._notebook.add(self._global_tab, text=" ⚙ サーバー設定 ")
+        self._notebook.add(self._advanced_tab, text=" 🔧 ツール ")
+        self._notebook.add(self._history_tab, text=" 📋 バックアップ ")
+
+        # === ステータスバー ===
+        status_frame = ttk.Frame(self._root)
+        status_frame.pack(fill=tk.X, padx=5, pady=(0, 5))
+        self._status_label = ttk.Label(
+            status_frame,
+            text=f"設定ファイル: {const.SMB_CONF_PATH}",
+            font=("", 9)
+        )
+        self._status_label.pack(side=tk.LEFT)
+
+    def _on_apply_all(self) -> None:
+        """
+        統合[適用]ボタンの処理。
+        共有設定タブとサーバー設定タブの変更をまとめてsmb.confに適用する。
+        パスワード入力は1回のみ（apply-allバッチコマンド使用）。
+        """
+        # Writerを作成（現在のsmb.configベース）
+        writer = SmbConfWriter(self._config)
+
+        # === 共有設定タブの変更を収集 ===
+        shares_result = self._shares_tab.collect_changes(writer)
+        if shares_result is None:
+            # バリデーションエラー → 中断
+            return
+
+        # === サーバー設定タブの変更を収集 ===
+        global_result = self._global_tab.collect_changes(writer)
+        if global_result is None:
+            # バリデーションエラー → 中断
+            return
+
+        # === 変更後の内容を生成 ===
+        new_content = writer.generate_content()
+
+        # === バックアップコメントを自動生成 ===
+        comment_parts = shares_result.get("comment_parts", [])
+        if comment_parts:
+            auto_comment = "共有設定の変更: " + "、".join(comment_parts)
+        else:
+            auto_comment = "共有設定/サーバー設定の変更"
+
+        # === 適用処理を実行（1回のpkexec） ===
+        samba_users = shares_result.get("samba_users", [])
+        new_dirs = shares_result.get("new_dirs", [])
+        enable_users = shares_result.get("enable_users", [])
+
+        result = self._apply_manager.apply_changes(
+            new_conf_content=new_content,
+            category=const.CATEGORY_SHARED_FOLDER,
+            comment=auto_comment,
+            samba_users_to_add=samba_users if samba_users else None,
+            new_share_dirs=new_dirs if new_dirs else None,
+            enable_users=enable_users if enable_users else None
+        )
+
+        if result.success:
+            # Sambaユーザーを追加/有効化した場合、キャッシュを更新
+            if samba_users:
+                for u in samba_users:
+                    username = u.get("username", "")
+                    if username:
+                        self._samba_users_cache[username] = system_utils.SAMBA_STATUS_ENABLED
+            # 無効→有効に変更されたユーザー分もキャッシュ更新
+            enable_users = shares_result.get("enable_users", [])
+            for username in enable_users:
+                self._samba_users_cache[username] = system_utils.SAMBA_STATUS_ENABLED
+            # 実行されたステップを表示
+            steps_msg = ""
+            if result.steps:
+                steps_msg = "\n\n実行結果:\n" + "\n".join(f"  ✓ {s}" for s in result.steps)
+            if result.errors:
+                steps_msg += "\n\n注意:\n" + "\n".join(f"  ⚠ {e}" for e in result.errors)
+            messagebox.showinfo("完了", f"{result.message}{steps_msg}", parent=self._root)
+            self.reload_data()
+        else:
+            error_msg = "\n".join(result.errors)
+            messagebox.showerror("エラー", f"適用に失敗しました:\n\n{error_msg}", parent=self._root)
+
+    def reload_data(self) -> None:
+        """smb.confを再パースして全タブのデータを更新する"""
+        try:
+            self._config = self._parser.parse(const.SMB_CONF_PATH)
+        except (IOError, PermissionError) as e:
+            content = self._apply_manager.read_current_conf()
+            if content:
+                self._config = self._parser.parse_string(content, const.SMB_CONF_PATH)
+            else:
+                messagebox.showerror(
+                    "エラー",
+                    f"smb.confの読み取りに失敗しました:\n{e}",
+                    parent=self._root
+                )
+                return
+
+        # ユーザー一覧を取得（Sambaユーザー情報は起動時のみpkexecで取得）
+        users = system_utils.get_system_users()
+        if not self._samba_users_loaded:
+            # 初回のみpkexecでSambaユーザー一覧を取得してキャッシュ
+            helper_path = const.get_helper_path()
+            try:
+                self._samba_users_cache = system_utils.get_samba_users_with_status(helper_path)
+                self._samba_users_loaded = True
+            except Exception as e:
+                print(f"警告: Sambaユーザー一覧の取得に失敗: {e}")
+                self._samba_users_cache = {}
+        # キャッシュからSambaユーザーステータスを設定
+        for user in users:
+            user.samba_status = self._samba_users_cache.get(
+                user.username, system_utils.SAMBA_STATUS_UNREGISTERED
+            )
+        self._users = users
+
+        # 各タブにデータを配信
+        self._shares_tab.load_data(self._config, self._users)
+        self._global_tab.load_data(self._config)
+        self._advanced_tab.load_data()
+        self._history_tab.load_data()
+
+        # ステータスバーを更新
+        section_count = len(self._config.sections)
+        share_count = len(SmbConfParser.get_share_sections(self._config))
+        self._status_label.config(
+            text=f"設定ファイル: {const.SMB_CONF_PATH}  |  "
+                 f"セクション数: {section_count}  |  "
+                 f"共有フォルダ数: {share_count}"
+        )
+
+    def _toggle_theme(self) -> None:
+        """ダーク/ライトテーマを切り替える"""
+        if sv_ttk is not None:
+            current = sv_ttk.get_theme()
+            new_theme = "light" if current == "dark" else "dark"
+            sv_ttk.set_theme(new_theme)
+            self._config_manager.set("theme", new_theme)
+            self._config_manager.save()
+
+    @property
+    def config_manager(self) -> ConfigManager:
+        return self._config_manager
+
+    @property
+    def backup_manager(self) -> BackupManager:
+        return self._backup_manager
+
+    @property
+    def apply_manager(self) -> ApplyManager:
+        return self._apply_manager
+
+    def update_samba_user_cache(self, username: str, status: int) -> None:
+        """Sambaユーザーキャッシュを更新する（ツールタブ等から呼ばれる）"""
+        if status == system_utils.SAMBA_STATUS_UNREGISTERED:
+            self._samba_users_cache.pop(username, None)
+        else:
+            self._samba_users_cache[username] = status
+
+    def refresh_samba_cache_and_reload(self) -> None:
+        """Samba設定および全タブをキャッシュ情報を維持したまま再描画する"""
+        self.reload_data()
+
+    def run(self) -> None:
+        """アプリケーションのメインループを開始する"""
+        self._root.mainloop()
