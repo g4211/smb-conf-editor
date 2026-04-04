@@ -66,137 +66,133 @@ class ApplyManager:
         """
         apply-allバッチコマンドで全操作を1回のpkexecで実行する。
         パスワード入力は1回だけ。
-
-        手順:
-        1. 新しいsmb.confを一時ファイルに書き出し
-        2. バックアップ先パスを決定
-        3. JSON設定ファイルを作成
-        4. pkexec smb-helper.sh apply-all <json> を1回だけ実行
-        5. 結果を解析して返す
         """
         result = ApplyResult(success=False)
-
-        # === 一時ファイルに新しいsmb.confを書き出し ===
-        try:
-            tmp_new = tempfile.NamedTemporaryFile(
-                mode='w', suffix='.conf', prefix='smb_new_',
-                delete=False, dir=tempfile.gettempdir(),
-                encoding='utf-8'
-            )
-            tmp_new.write(new_conf_content)
-            tmp_new.close()
-            tmp_new_path = tmp_new.name
-            # 読み取り権限をrootからも読めるようにする
-            os.chmod(tmp_new_path, 0o644)
-        except Exception as e:
-            result.errors.append(f"一時ファイルの書き出しに失敗: {e}")
-            return result
-
-        # === バックアップ先パスを決定 ===
         from datetime import datetime
         now = datetime.now()
-        timestamp_str = now.strftime(const.BACKUP_DATETIME_FORMAT)
-        backup_filename = f"{const.BACKUP_PREFIX}{timestamp_str}{const.BACKUP_EXTENSION}"
-        backup_path = os.path.join(self._backup_manager.backup_dir, backup_filename)
-        # バックアップディレクトリが存在するか確認
-        os.makedirs(self._backup_manager.backup_dir, exist_ok=True)
 
-        # === JSON設定ファイルを作成 ===
-        apply_config = {
+        # 1. 新しいsmb.confの一時ファイル作成
+        tmp_new_path = self._prepare_new_conf_tempfile(new_conf_content, result)
+        if not tmp_new_path:
+            return result
+
+        # 2. JSON設定の組み立てと一時ファイル保存
+        backup_filename, backup_path = self._get_backup_path_info(now)
+        os.makedirs(self._backup_manager.backup_dir, exist_ok=True)
+        
+        apply_config = self._build_apply_config(
+            backup_path, tmp_new_path,
+            samba_users_to_add, enable_users, new_share_dirs
+        )
+        
+        tmp_json_path = self._write_json_tempfile(apply_config, tmp_new_path, result)
+        if not tmp_json_path:
+            return result
+
+        # 3. pkexecコマンド実行と結果解析
+        helper_result = self._run_helper("apply-all", tmp_json_path, timeout=120)
+        self._parse_helper_result(helper_result, result)
+
+        # 4. 履歴更新と後処理
+        if result.success:
+            self._update_backup_history(backup_filename, now, category, comment)
+            result.backup_filename = backup_filename
+            result.message = "設定を正常に適用しました" if not result.errors else "設定を適用しましたが、一部でエラーが発生しました"
+        else:
+            result.message = "適用処理に失敗しました"
+
+        self._cleanup_temp(tmp_new_path)
+        self._cleanup_temp(tmp_json_path)
+        return result
+
+    def _prepare_new_conf_tempfile(self, content: str, result: ApplyResult) -> Optional[str]:
+        """新しいsmb.conf内容を一時ファイルに書き出す"""
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode='w', suffix='.conf', prefix='smb_new_',
+                delete=False, dir=tempfile.gettempdir(), encoding='utf-8'
+            ) as tmp:
+                tmp.write(content)
+                tmp_path = tmp.name
+            os.chmod(tmp_path, 0o644)
+            return tmp_path
+        except Exception as e:
+            result.errors.append(f"一時ファイルの書き出しに失敗: {e}")
+            return None
+
+    def _get_backup_path_info(self, now) -> tuple[str, str]:
+        """バックアップファイル名とパスを生成する"""
+        timestamp_str = now.strftime(const.BACKUP_DATETIME_FORMAT)
+        filename = f"{const.BACKUP_PREFIX}{timestamp_str}{const.BACKUP_EXTENSION}"
+        path = os.path.join(self._backup_manager.backup_dir, filename)
+        return filename, path
+
+    def _build_apply_config(self, backup_path: str, tmp_new_path: str,
+                            samba_users, enable_users, create_dirs) -> dict:
+        """バックエンドへ渡すJSON設定を組み立てる"""
+        config = {
             "backup_dest": backup_path,
             "new_conf_path": tmp_new_path,
             "restart_smbd": True,
             "samba_users": [],
-            "enable_users": [],
+            "enable_users": enable_users or [],
             "create_dirs": [],
         }
+        if samba_users:
+            for u in samba_users:
+                config["samba_users"].append({"username": u.get("username", ""), "password": u.get("password", "")})
+        if create_dirs:
+            for d in create_dirs:
+                config["create_dirs"].append({"path": d, "owner": "nobody", "group": "nogroup", "mode": "0777"})
+        return config
 
-        # Sambaユーザー追加情報
-        if samba_users_to_add:
-            for user_info in samba_users_to_add:
-                apply_config["samba_users"].append({
-                    "username": user_info.get("username", ""),
-                    "password": user_info.get("password", ""),
-                })
-
-        # 無効→有効にするユーザー
-        if enable_users:
-            apply_config["enable_users"] = enable_users
-
-        # ディレクトリ作成情報
-        if new_share_dirs:
-            for dir_path in new_share_dirs:
-                apply_config["create_dirs"].append({
-                    "path": dir_path,
-                    "owner": "nobody",
-                    "group": "nogroup",
-                    "mode": "0777",
-                })
-
-        # JSON設定ファイルを一時ファイルに書き出し
+    def _write_json_tempfile(self, config: dict, tmp_new_path: str, result: ApplyResult) -> Optional[str]:
+        """JSON設定を一時ファイルに書き出す"""
         try:
-            tmp_json = tempfile.NamedTemporaryFile(
+            with tempfile.NamedTemporaryFile(
                 mode='w', suffix='.json', prefix='smb_apply_',
-                delete=False, dir=tempfile.gettempdir(),
-                encoding='utf-8'
-            )
-            json.dump(apply_config, tmp_json, ensure_ascii=False)
-            tmp_json.close()
-            tmp_json_path = tmp_json.name
-            # セキュリティ: パスワード含むためアクセス制限
-            os.chmod(tmp_json_path, 0o600)
+                delete=False, dir=tempfile.gettempdir(), encoding='utf-8'
+            ) as tmp:
+                json.dump(config, tmp, ensure_ascii=False)
+                tmp_path = tmp.name
+            os.chmod(tmp_path, 0o600)
+            return tmp_path
         except Exception as e:
             result.errors.append(f"設定ファイルの作成に失敗: {e}")
             self._cleanup_temp(tmp_new_path)
-            return result
+            return None
 
-        # === pkexec apply-all を1回だけ実行 ===
-        helper_result = self._run_helper("apply-all", tmp_json_path, timeout=120)
-
-        # === 結果を解析 ===
+    def _parse_helper_result(self, helper_result, result: ApplyResult):
+        """ヘルパースクリプトの実行結果を解析する"""
         if helper_result.returncode == 0 and helper_result.stdout.strip():
             try:
-                result_data = json.loads(helper_result.stdout.strip())
-                result.success = result_data.get("success", False)
-                result.steps = result_data.get("steps", [])
-                result.errors = result_data.get("errors", [])
+                data = json.loads(helper_result.stdout.strip())
+                result.success = data.get("success", False)
+                result.steps = data.get("steps", [])
+                result.errors = data.get("errors", [])
             except json.JSONDecodeError:
-                # JSON以外の出力（旧形式互換）
                 if "OK" in helper_result.stdout:
                     result.success = True
                     result.steps.append(helper_result.stdout.strip())
                 else:
                     result.errors.append(helper_result.stdout.strip())
         else:
-            # 実行失敗
             error_msg = helper_result.stderr or helper_result.stdout or "不明なエラー"
             result.errors.append(f"適用処理に失敗しました:\n{error_msg}")
 
-        # === バックアップ履歴を更新（成功時） ===
-        if result.success:
-            from .backup_manager import BackupEntry
-            entry = BackupEntry(
-                filename=backup_filename,
-                timestamp=now.isoformat(timespec='seconds'),
-                comment=comment,
-                exclude_from_deletion=False,
-                category=category,
-            )
-            self._backup_manager._history.append(entry)
-            self._backup_manager._save_history()
-            self._backup_manager.delete_old_backups()
-            result.backup_filename = backup_filename
-            result.message = "設定を正常に適用しました"
-            if result.errors:
-                result.message = "設定を適用しましたが、一部でエラーが発生しました"
-        else:
-            result.message = "適用処理に失敗しました"
-
-        # === 一時ファイルの削除 ===
-        self._cleanup_temp(tmp_new_path)
-        self._cleanup_temp(tmp_json_path)
-
-        return result
+    def _update_backup_history(self, filename: str, now, category: str, comment: str):
+        """バックアップ履歴に新しいエントリを追加する"""
+        from .backup_manager import BackupEntry
+        entry = BackupEntry(
+            filename=filename,
+            timestamp=now.isoformat(timespec='seconds'),
+            comment=comment,
+            exclude_from_deletion=False,
+            category=category,
+        )
+        self._backup_manager._history.append(entry)
+        self._backup_manager._save_history()
+        self._backup_manager.delete_old_backups()
 
     def read_current_conf(self) -> Optional[str]:
         """現在のsmb.confの内容を読み取る（ヘルパー経由）"""

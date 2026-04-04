@@ -1,18 +1,18 @@
 # リファクタリングタスク
 
-- `[ ]` Gitの初期化、`.gitignore`の作成、Baselineコミット
-- `[ ]` **Phase 1: ディレクトリ構造とパッケージの整理**
-  - `[ ]` `smb_editor/` 内のモジュールの責務見直し・ファイル配置整理
-  - `[ ]` 不要インポート等の削除
-- `[ ]` **Phase 2: 巨大関数の分割 (UI構築ロジック)**
-  - `[ ]` `app.py`
-  - `[ ]` `advanced_tab.py`
-  - `[ ]` `shares_tab.py`
-  - `[ ]` `global_tab.py`
-  - `[ ]` `history_tab.py`
-- `[ ]` **Phase 3: ロジックブロックの分割と整理**
-  - `[ ]` `apply_manager.py` (設定JSON構築、コマンド実行の分離)
-  - `[ ]` `system_utils.py` (バリデーションやステータス管理の分離)
+- `[x]` Gitの初期化、`.gitignore`の作成、Baselineコミット
+- `[x]` **Phase 1: ディレクトリ構造とパッケージの整理**
+  - `[x]` `smb_editor/` 内のモジュールの責務見直し・ファイル配置整理
+  - `[x]` 不要インポート等の削除
+- `[x]` **Phase 2: 巨大関数の分割 (UI構築ロジック)**
+  - `[x]` `app.py`
+  - `[x]` `advanced_tab.py`
+  - `[x]` `shares_tab.py`
+  - `[x]` `global_tab.py`
+  - `[x]` `history_tab.py`
+- `[x]` **Phase 3: ロジックブロックの分割と整理**
+  - `[x]` `apply_manager.py` (設定JSON構築、コマンド実行の分離)
+  - `[x]` `system_utils.py` (バリデーションやステータス管理の分離)
 - `[ ]` **Phase 4: 定数の集約・リファクタリング適用**
   - `[ ]` ハードコードされているUIメッセージ等の定数化
   - `[ ]` `flake8`等に代わるASTベースや目視でのクリーンコード検証

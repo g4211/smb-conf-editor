@@ -40,18 +40,23 @@ class GlobalTab(ttk.Frame):
         content_frame = ttk.Frame(self)
         content_frame.pack(fill=tk.BOTH, expand=True)
 
-        # === workgroup ===
-        wg_frame = ttk.Frame(content_frame)
+        self._build_workgroup_section(content_frame)
+        self._build_hosts_allow_section(content_frame)
+        self._build_extra_settings_section(content_frame)
+
+    def _build_workgroup_section(self, parent: tk.Widget) -> None:
+        """ワークグループ設定セクションを構築する"""
+        wg_frame = ttk.Frame(parent)
         wg_frame.pack(fill=tk.X, pady=(0, 10))
         ttk.Label(wg_frame, text="workgroup:", width=12).pack(side=tk.LEFT)
         self._workgroup_var = tk.StringVar(value="WORKGROUP")
         ttk.Entry(wg_frame, textvariable=self._workgroup_var, width=30).pack(side=tk.LEFT, padx=(5, 0))
 
-        # === hosts allow ===
-        hosts_frame = ttk.LabelFrame(content_frame, text="アクセスを許可するアドレス（hosts allow）", padding=10)
+    def _build_hosts_allow_section(self, parent: tk.Widget) -> None:
+        """アクセス許可（hosts allow）セクションを構築する"""
+        hosts_frame = ttk.LabelFrame(parent, text="アクセスを許可するアドレス（hosts allow）", padding=10)
         hosts_frame.pack(fill=tk.X, pady=(0, 10))
 
-        # 説明と自動入力ボタン
         hosts_top = ttk.Frame(hosts_frame)
         hosts_top.pack(fill=tk.X, pady=(0, 5))
         ttk.Label(
@@ -65,19 +70,18 @@ class GlobalTab(ttk.Frame):
             command=self._auto_fill_network
         ).pack(side=tk.RIGHT)
 
-        # テキストエリア
         hosts_text_frame = ttk.Frame(hosts_frame)
         hosts_text_frame.pack(fill=tk.X)
         self._hosts_text = tk.Text(hosts_text_frame, height=5, width=50, font=("monospace", 10))
-        hosts_scrollbar = ttk.Scrollbar(hosts_text_frame, orient=tk.VERTICAL,
-                                        command=self._hosts_text.yview)
+        hosts_scrollbar = ttk.Scrollbar(hosts_text_frame, orient=tk.VERTICAL, command=self._hosts_text.yview)
         self._hosts_text.configure(yscrollcommand=hosts_scrollbar.set)
         self._hosts_text.pack(side=tk.LEFT, fill=tk.X, expand=True)
         hosts_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # === その他の設定（折りたたみ可能） ===
+    def _build_extra_settings_section(self, parent: tk.Widget) -> None:
+        """その他の設定（折りたたみ可能）セクションを構築する"""
         self._extra_expanded = tk.BooleanVar(value=False)
-        extra_header = ttk.Frame(content_frame)
+        extra_header = ttk.Frame(parent)
         extra_header.pack(fill=tk.X, pady=(10, 0))
 
         self._toggle_btn = ttk.Button(
@@ -86,11 +90,9 @@ class GlobalTab(ttk.Frame):
         )
         self._toggle_btn.pack(side=tk.LEFT)
 
-        # 折りたたみコンテンツ
-        self._extra_frame = ttk.LabelFrame(content_frame, text="その他の設定", padding=10)
+        self._extra_frame = ttk.LabelFrame(parent, text="その他の設定", padding=10)
         self._extra_vars: dict[str, tk.StringVar] = {}
 
-        # その他の設定項目を構築
         for param_info in const.GLOBAL_EXTRA_PARAMS:
             param_frame = ttk.Frame(self._extra_frame)
             param_frame.pack(fill=tk.X, pady=(0, 5))

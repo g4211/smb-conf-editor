@@ -52,82 +52,66 @@ class ShareCard(ttk.LabelFrame):
 
     def _build_ui(self) -> None:
         """UIウィジェットを構築する"""
-        # === 1行目: 共有名、ディレクトリ、読み取り専用 ===
+        self._build_basic_section()
+        self._build_comment_section()
+        self._build_access_section()
+        self._on_guest_toggled()
+        self._path_entry.bind("<FocusOut>", self._on_path_focus_out)
+
+    def _build_basic_section(self) -> None:
+        """共有名、ディレクトリ、読み取り専用の行を構築"""
         row1 = ttk.Frame(self)
         row1.pack(fill=tk.X, pady=(0, 5))
 
-        # 共有名
         ttk.Label(row1, text="共有名:").pack(side=tk.LEFT, padx=(0, 5))
         self._name_var = tk.StringVar()
         self._name_entry = ttk.Entry(row1, textvariable=self._name_var, width=18)
         self._name_entry.pack(side=tk.LEFT, padx=(0, 10))
 
-        # ディレクトリパス
         ttk.Label(row1, text="ディレクトリ:").pack(side=tk.LEFT, padx=(0, 5))
         self._path_var = tk.StringVar()
         self._path_entry = ttk.Entry(row1, textvariable=self._path_var, width=28)
         self._path_entry.pack(side=tk.LEFT, padx=(0, 3))
 
-        # ディレクトリ作成予定ラベル（初期は非表示）
         self._pending_label = ttk.Label(row1, text="📁 作成予定", foreground="#4CAF50")
 
-        # 参照ボタン
-        ttk.Button(row1, text="参照", width=5,
-                   command=self._browse_directory).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(row1, text="参照", width=5, command=self._browse_directory).pack(side=tk.LEFT, padx=(0, 8))
 
-        # 読み取り専用チェックボックス
         self._readonly_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            row1, text="読み取り専用", variable=self._readonly_var
-        ).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Checkbutton(row1, text="読み取り専用", variable=self._readonly_var).pack(side=tk.LEFT, padx=(0, 8))
 
-        # 削除ボタン（新規カードでなく、削除コールバックがある場合）
         if not self._is_new and self._on_delete:
-            ttk.Button(
-                row1, text="削除", width=5,
-                command=self._confirm_delete
-            ).pack(side=tk.RIGHT)
+            ttk.Button(row1, text="削除", width=5, command=self._confirm_delete).pack(side=tk.RIGHT)
 
-        # === 2行目: コメント ===
+    def _build_comment_section(self) -> None:
+        """コメント行を構築"""
         comment_frame = ttk.Frame(self)
         comment_frame.pack(fill=tk.X, pady=(0, 5))
         ttk.Label(comment_frame, text="コメント:").pack(side=tk.LEFT, padx=(0, 5))
         self._comment_var = tk.StringVar()
-        ttk.Entry(comment_frame, textvariable=self._comment_var, width=60).pack(
-            side=tk.LEFT, fill=tk.X, expand=True
-        )
+        ttk.Entry(comment_frame, textvariable=self._comment_var, width=60).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        # === 3行目: アクセス許可 ===
+    def _build_access_section(self) -> None:
+        """アクセス可否行（ゲスト、ユーザー一覧）を構築"""
         access_frame = ttk.LabelFrame(self, text="アクセス許可", padding=5)
         access_frame.pack(fill=tk.X, pady=(0, 5))
 
-        # ゲストチェックボックス
-        self._guest_var = tk.BooleanVar(value=self._is_new)  # 新規はデフォルトでゲスト
-        guest_cb = ttk.Checkbutton(
-            access_frame, text="ゲスト", variable=self._guest_var,
-            command=self._on_guest_toggled
-        )
+        self._guest_var = tk.BooleanVar(value=self._is_new)
+        guest_cb = ttk.Checkbutton(access_frame, text="ゲスト", variable=self._guest_var, command=self._on_guest_toggled)
         guest_cb.pack(side=tk.LEFT, padx=(0, 15))
 
-        # ユーザーチェックボックスのリスト
         self._user_vars: dict[str, tk.BooleanVar] = {}
         self._user_checkbuttons: dict[str, ttk.Checkbutton] = {}
         for user in self._users:
             var = tk.BooleanVar(value=False)
-            # Sambaステータスに応じたアイコンを付ける
             from ..system_utils import SAMBA_STATUS_LABELS
             status_icon = SAMBA_STATUS_LABELS.get(user.samba_status, "[未]")
-            # アイコン部分のみ（ラベルは "username [状態]" 形式）
-            icon = status_icon.split(" ")[0]  # "[未]" 部分だけ
-            label = f"{user.username} {icon}"
-            cb = ttk.Checkbutton(
-                access_frame, text=label, variable=var
-            )
+            icon = status_icon.split(" ")[0]
+            cb = ttk.Checkbutton(access_frame, text=f"{user.username} {icon}", variable=var)
             cb.pack(side=tk.LEFT, padx=(0, 10))
             self._user_vars[user.username] = var
             self._user_checkbuttons[user.username] = cb
 
-        # 凡例（ステータスの説明）
         legend_frame = ttk.Frame(self)
         legend_frame.pack(fill=tk.X, pady=(0, 5))
         ttk.Label(
@@ -135,12 +119,6 @@ class ShareCard(ttk.LabelFrame):
             text="[未] 未登録  [有] Samba有効  [無] Samba無効（適用時に自動で有効化されます）",
             font=("", 8), foreground="gray"
         ).pack(anchor=tk.W, padx=5)
-
-        # 初期状態でゲストならユーザーをグレーアウト
-        self._on_guest_toggled()
-
-        # ディレクトリEntry欄のFocusOutイベント
-        self._path_entry.bind("<FocusOut>", self._on_path_focus_out)
 
     def _load_values(self, section: SmbSection) -> None:
         """既存のセクションから値を読み込む"""

@@ -28,7 +28,11 @@ class HistoryTab(ttk.Frame):
 
     def _build_ui(self) -> None:
         """UIウィジェットを構築する"""
-        # === 設定セクション ===
+        self._build_settings_section()
+        self._build_list_section()
+
+    def _build_settings_section(self) -> None:
+        """バックアップ設定セクションを構築する"""
         settings_frame = ttk.LabelFrame(self, text="バックアップ設定", padding=10)
         settings_frame.pack(fill=tk.X, pady=(0, 10))
 
@@ -36,65 +40,48 @@ class HistoryTab(ttk.Frame):
         row1 = ttk.Frame(settings_frame)
         row1.pack(fill=tk.X, pady=(0, 5))
         ttk.Label(row1, text="初期設定ファイル:", width=18).pack(side=tk.LEFT)
-        self._default_conf_var = tk.StringVar(
-            value=self._app.config_manager.get("default_smb_conf", const.DEFAULT_SMB_CONF)
-        )
+        self._default_conf_var = tk.StringVar(value=self._app.config_manager.get("default_smb_conf", const.DEFAULT_SMB_CONF))
         ttk.Entry(row1, textvariable=self._default_conf_var, width=40).pack(side=tk.LEFT, padx=(5, 5))
-        ttk.Button(row1, text="参照", width=5,
-                   command=self._browse_default_conf).pack(side=tk.LEFT)
+        ttk.Button(row1, text="参照", width=5, command=self._browse_default_conf).pack(side=tk.LEFT)
 
         # バックアップディレクトリ
         row2 = ttk.Frame(settings_frame)
         row2.pack(fill=tk.X, pady=(0, 5))
         ttk.Label(row2, text="バックアップディレクトリ:", width=18).pack(side=tk.LEFT)
-        self._backup_dir_var = tk.StringVar(
-            value=self._app.config_manager.get("backup_dir", const.DEFAULT_BACKUP_DIR)
-        )
+        self._backup_dir_var = tk.StringVar(value=self._app.config_manager.get("backup_dir", const.DEFAULT_BACKUP_DIR))
         ttk.Entry(row2, textvariable=self._backup_dir_var, width=40).pack(side=tk.LEFT, padx=(5, 5))
-        ttk.Button(row2, text="参照", width=5,
-                   command=self._browse_backup_dir).pack(side=tk.LEFT)
+        ttk.Button(row2, text="参照", width=5, command=self._browse_backup_dir).pack(side=tk.LEFT)
 
         # バックアップ最大数
         row3 = ttk.Frame(settings_frame)
         row3.pack(fill=tk.X, pady=(0, 5))
         ttk.Label(row3, text="バックアップ最大数:", width=18).pack(side=tk.LEFT)
-        self._max_backups_var = tk.IntVar(
-            value=self._app.config_manager.get("max_backups", const.DEFAULT_MAX_BACKUPS)
-        )
-        ttk.Spinbox(
-            row3, from_=1, to=100, textvariable=self._max_backups_var, width=5
-        ).pack(side=tk.LEFT, padx=(5, 5))
+        self._max_backups_var = tk.IntVar(value=self._app.config_manager.get("max_backups", const.DEFAULT_MAX_BACKUPS))
+        ttk.Spinbox(row3, from_=1, to=100, textvariable=self._max_backups_var, width=5).pack(side=tk.LEFT, padx=(5, 5))
+        
+        ttk.Button(row3, text="設定を保存", width=10, command=self._save_settings).pack(side=tk.LEFT, padx=(15, 0))
 
-        ttk.Button(
-            row3, text="設定を保存", width=10,
-            command=self._save_settings
-        ).pack(side=tk.LEFT, padx=(15, 0))
-
-        # === バックアップ一覧セクション ===
+    def _build_list_section(self) -> None:
+        """バックアップ一覧セクションを構築する"""
         list_frame = ttk.LabelFrame(self, text="バックアップ一覧", padding=10)
         list_frame.pack(fill=tk.BOTH, expand=True)
 
-        # 更新ボタン
         list_top = ttk.Frame(list_frame)
         list_top.pack(fill=tk.X, pady=(0, 5))
-        ttk.Button(list_top, text="一覧を更新", width=10,
-                   command=self._refresh_list).pack(side=tk.LEFT)
+        ttk.Button(list_top, text="一覧を更新", width=10, command=self._refresh_list).pack(side=tk.LEFT)
 
-        # スクロール可能なバックアップリスト
         list_scroll_frame = ttk.Frame(list_frame)
         list_scroll_frame.pack(fill=tk.BOTH, expand=True)
 
         self._list_canvas = tk.Canvas(list_scroll_frame, highlightthickness=0)
-        list_scrollbar = ttk.Scrollbar(list_scroll_frame, orient=tk.VERTICAL,
-                                        command=self._list_canvas.yview)
+        list_scrollbar = ttk.Scrollbar(list_scroll_frame, orient=tk.VERTICAL, command=self._list_canvas.yview)
+        
         self._list_scrollable = ttk.Frame(self._list_canvas)
         self._list_scrollable.bind(
             "<Configure>",
             lambda e: self._list_canvas.configure(scrollregion=self._list_canvas.bbox("all"))
         )
-        self._list_canvas_window = self._list_canvas.create_window(
-            (0, 0), window=self._list_scrollable, anchor="nw"
-        )
+        self._list_canvas_window = self._list_canvas.create_window((0, 0), window=self._list_scrollable, anchor="nw")
         self._list_canvas.configure(yscrollcommand=list_scrollbar.set)
         self._list_canvas.bind("<Configure>", self._on_list_canvas_configure)
 

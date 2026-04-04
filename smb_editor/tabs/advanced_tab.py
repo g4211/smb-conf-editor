@@ -189,11 +189,15 @@ class AdvancedTab(ttk.Frame):
         main_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         main_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # === Sambaユーザー管理セクション ===
-        users_frame = ttk.LabelFrame(scrollable_frame, text="Sambaユーザー管理", padding=10)
+        self._build_user_management_section(scrollable_frame)
+        self._build_direct_edit_section(scrollable_frame)
+        self._build_log_section(scrollable_frame)
+
+    def _build_user_management_section(self, parent: tk.Widget) -> None:
+        """Sambaユーザー管理セクションを構築する"""
+        users_frame = ttk.LabelFrame(parent, text="Sambaユーザー管理", padding=10)
         users_frame.pack(fill=tk.X, pady=(0, 15), padx=5)
 
-        # ユーザーリスト表示用コンテナ (ヘッダーと中身を一つのGridにまとめる)
         self._user_list_frame = ttk.Frame(users_frame)
         self._user_list_frame.pack(fill=tk.X, pady=(0, 5))
         
@@ -201,27 +205,22 @@ class AdvancedTab(ttk.Frame):
         ttk.Label(self._user_list_frame, text="状態", width=12).grid(row=0, column=1, sticky="w", padx=5)
         ttk.Label(self._user_list_frame, text="登録/解除", width=12).grid(row=0, column=2, sticky="w", padx=5)
         ttk.Label(self._user_list_frame, text="有効/無効", width=12).grid(row=0, column=3, sticky="w", padx=10)
-        
         ttk.Separator(self._user_list_frame, orient="horizontal").grid(row=1, column=0, columnspan=4, sticky="ew", pady=(5, 5))
 
-        # === エディターで編集セクション ===
-        edit_frame = ttk.LabelFrame(scrollable_frame, text="設定ファイルの直接編集", padding=10)
+    def _build_direct_edit_section(self, parent: tk.Widget) -> None:
+        """設定ファイルの直接編集セクションを構築する"""
+        edit_frame = ttk.LabelFrame(parent, text="設定ファイルの直接編集", padding=10)
         edit_frame.pack(fill=tk.X, pady=(0, 15), padx=5)
 
-        # エディター指定行
         editor_row = ttk.Frame(edit_frame)
         editor_row.pack(fill=tk.X, pady=(0, 8))
         ttk.Label(editor_row, text="使用するエディター:").pack(side=tk.LEFT, padx=(0, 5))
-        self._editor_var = tk.StringVar(
-            value=self._app.config_manager.get("editor", const.DEFAULT_EDITOR)
-        )
+        
+        self._editor_var = tk.StringVar(value=self._app.config_manager.get("editor", const.DEFAULT_EDITOR))
         ttk.Entry(editor_row, textvariable=self._editor_var, width=20).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(editor_row, text="確認", width=8,
-                   command=self._check_editor).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(editor_row, text="エディターで編集", width=14,
-                   command=self._direct_edit).pack(side=tk.LEFT)
+        ttk.Button(editor_row, text="確認", width=8, command=self._check_editor).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(editor_row, text="エディターで編集", width=14, command=self._direct_edit).pack(side=tk.LEFT)
 
-        # 説明
         ttk.Label(
             edit_frame,
             text="[エディターで編集]をクリックすると、指定したエディターでsmb.confを編集できます。\n"
@@ -229,48 +228,38 @@ class AdvancedTab(ttk.Frame):
             font=("", 9), foreground="gray"
         ).pack(anchor=tk.W)
 
-        # === ログファイルセクション ===
-        log_frame = ttk.LabelFrame(scrollable_frame, text="ログファイル", padding=10)
-        # 高さを固定して表示（スクロール領域内に配置するため）
+    def _build_log_section(self, parent: tk.Widget) -> None:
+        """ログファイルセクションを構築する"""
+        log_frame = ttk.LabelFrame(parent, text="ログファイル", padding=10)
         log_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
 
-        # ログディレクトリ指定行
         logdir_row = ttk.Frame(log_frame)
         logdir_row.pack(fill=tk.X, pady=(0, 8))
         ttk.Label(logdir_row, text="ログディレクトリ:").pack(side=tk.LEFT, padx=(0, 5))
-        self._logdir_var = tk.StringVar(
-            value=self._app.config_manager.get("log_dir", const.DEFAULT_LOG_DIR)
-        )
+        
+        self._logdir_var = tk.StringVar(value=self._app.config_manager.get("log_dir", const.DEFAULT_LOG_DIR))
         ttk.Entry(logdir_row, textvariable=self._logdir_var, width=35).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(logdir_row, text="参照", width=5,
-                   command=self._browse_logdir).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(logdir_row, text="更新", width=5,
-                   command=self._refresh_log_list).pack(side=tk.LEFT)
+        ttk.Button(logdir_row, text="参照", width=5, command=self._browse_logdir).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(logdir_row, text="更新", width=5, command=self._refresh_log_list).pack(side=tk.LEFT)
 
-        # ログファイル一覧
         ttk.Label(log_frame, text="ログファイル:").pack(anchor=tk.W, pady=(0, 5))
 
         log_list_frame = ttk.Frame(log_frame)
         log_list_frame.pack(fill=tk.BOTH, expand=True)
 
         self._log_canvas = tk.Canvas(log_list_frame, highlightthickness=0)
-        log_scrollbar = ttk.Scrollbar(log_list_frame, orient=tk.VERTICAL,
-                                       command=self._log_canvas.yview)
+        log_scrollbar = ttk.Scrollbar(log_list_frame, orient=tk.VERTICAL, command=self._log_canvas.yview)
+        
         self._log_scrollable = ttk.Frame(self._log_canvas)
-        self._log_scrollable.bind(
-            "<Configure>",
-            lambda e: self._log_canvas.configure(scrollregion=self._log_canvas.bbox("all"))
-        )
-        self._log_canvas_window = self._log_canvas.create_window(
-            (0, 0), window=self._log_scrollable, anchor="nw"
-        )
+        self._log_scrollable.bind("<Configure>", lambda e: self._log_canvas.configure(scrollregion=self._log_canvas.bbox("all")))
+        
+        self._log_canvas_window = self._log_canvas.create_window((0, 0), window=self._log_scrollable, anchor="nw")
         self._log_canvas.configure(yscrollcommand=log_scrollbar.set)
         self._log_canvas.bind("<Configure>", self._on_log_canvas_configure)
 
         self._log_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         log_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        # 初期表示
+        
         self._refresh_log_list()
 
     def _on_log_canvas_configure(self, event) -> None:
