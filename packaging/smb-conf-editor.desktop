@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Samba設定エディター
+Name[ja]=Samba設定エディター
+Comment=Configure Samba file sharing
+Comment[ja]=Sambaのファイル共有設定を編集します
+Exec=/usr/bin/smb-conf-editor
+Icon=preferences-system-network
+Terminal=false
+Type=Application
+Categories=Settings;System;Network;
+StartupNotify=true
