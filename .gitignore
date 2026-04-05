@@ -9,4 +9,6 @@ __pycache__/
 # Project specific
 logs/
 backup/
+backups/
 config.json
+build_deb/

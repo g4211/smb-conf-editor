@@ -16,6 +16,11 @@ app_dir = os.path.dirname(os.path.abspath(__file__))
 if app_dir not in sys.path:
     sys.path.insert(0, app_dir)
 
+# バンドルされたライブラリディレクトリをPythonパスに追加（debパッケージ環境用）
+vendor_dir = os.path.join(app_dir, "vendor")
+if os.path.exists(vendor_dir) and vendor_dir not in sys.path:
+    sys.path.insert(0, vendor_dir)
+
 from smb_editor.app import SmbConfEditorApp
 
 
