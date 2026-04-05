@@ -461,6 +461,8 @@ class SharesTab(ttk.Frame):
                     writer.add_section(name, params)
                 else:
                     writer.set_section_params(name, params)
+                    if "comment" not in params:
+                        writer.remove_param(name, "comment")
 
             # Sambaユーザー登録が必要なユーザー
             for username in card_config.get("samba_users_to_add", []):

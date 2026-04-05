@@ -200,5 +200,7 @@ class ServerTab(ttk.Frame):
                 value = self._extra_vars[key].get().strip()
                 if value:
                     writer.update_param("global", key, value)
+                else:
+                    writer.remove_param("global", key)
 
         return True
