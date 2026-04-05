@@ -113,12 +113,14 @@ class SmbConfEditorApp:
 
         # smb.confが存在するか確認
         if not system_utils.check_smb_conf_exists():
-            errors.append(f"設定ファイル '{const.SMB_CONF_PATH}' が見つかりません")
+            from .messages import MSGS
+            errors.append(MSGS.ERR_CONF_NOT_FOUND.format(path=const.SMB_CONF_PATH))
 
         # ヘルパースクリプトが存在するか確認
         helper_path = const.get_helper_path()
         if not os.path.isfile(helper_path):
-            errors.append(f"ヘルパースクリプトが見つかりません: {helper_path}")
+            from .messages import MSGS
+            errors.append(MSGS.ERR_HELPER_NOT_FOUND.format(path=helper_path))
         else:
             if not os.access(helper_path, os.X_OK):
                 try:
@@ -149,25 +151,27 @@ class SmbConfEditorApp:
 
     def _build_toolbar(self, parent: tk.Widget) -> None:
         """上部のツールバー（適用ボタンなど）を構築する"""
+        from .messages import UI
         toolbar = ttk.Frame(parent)
         toolbar.pack(fill=tk.X, padx=5, pady=(5, 0))
 
-        self._apply_btn = ttk.Button(toolbar, text="✓ 適用", command=self._on_apply_all)
+        self._apply_btn = ttk.Button(toolbar, text=UI.BTN_APPLY, command=self._on_apply_all)
         self._apply_btn.pack(side=tk.LEFT, padx=(0, 10))
 
         ttk.Label(
             toolbar,
-            text="共有設定とサーバー設定をまとめて smb.conf に適用します",
+            text=UI.DESC_APP_APPLY,
             font=("", 9), foreground="gray"
         ).pack(side=tk.LEFT)
 
-        self._theme_btn = ttk.Button(toolbar, text="🌙/☀ テーマ", width=10, command=self._toggle_theme)
+        self._theme_btn = ttk.Button(toolbar, text=UI.BTN_THEME, width=10, command=self._toggle_theme)
         self._theme_btn.pack(side=tk.RIGHT, padx=(5, 0))
 
-        ttk.Button(toolbar, text="🔄 再読み込み", width=12, command=self.reload_data).pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(toolbar, text=UI.BTN_RELOAD, width=12, command=self.reload_data).pack(side=tk.RIGHT, padx=(5, 0))
 
     def _build_notebook(self, parent: tk.Widget) -> None:
         """メインのタブ（ノートブック）エリアを構築する"""
+        from .messages import UI
         self._notebook = ttk.Notebook(parent)
         self._notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
 
@@ -176,10 +180,10 @@ class SmbConfEditorApp:
         self._advanced_tab = AdvancedTab(self._notebook, self)
         self._history_tab = HistoryTab(self._notebook, self)
 
-        self._notebook.add(self._shares_tab, text=" 📁 共有設定 ")
-        self._notebook.add(self._global_tab, text=" ⚙ サーバー設定 ")
-        self._notebook.add(self._advanced_tab, text=" 🔧 ツール ")
-        self._notebook.add(self._history_tab, text=" 📋 バックアップ ")
+        self._notebook.add(self._shares_tab, text=UI.TAB_SHARES)
+        self._notebook.add(self._global_tab, text=UI.TAB_GLOBAL)
+        self._notebook.add(self._advanced_tab, text=UI.TAB_ADVANCED)
+        self._notebook.add(self._history_tab, text=UI.TAB_HISTORY)
 
     def _build_statusbar(self) -> None:
         """下部のステータスバーを構築する"""
