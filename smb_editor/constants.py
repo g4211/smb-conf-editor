@@ -100,15 +100,15 @@ BACKUP_EXTENSION = ".conf"
 HISTORY_FILENAME = "history.json"
 
 # === バックアップカテゴリー ===
-CATEGORY_SHARED_FOLDER = "shared_folder"
-CATEGORY_GLOBAL = "global"
+CATEGORY_SHARE = "share"
+CATEGORY_SERVER = "server"
 CATEGORY_DIRECT_EDIT = "direct_edit"
 CATEGORY_RESTORE = "restore"
 
 # カテゴリーの日本語表示名
 CATEGORY_LABELS = {
-    CATEGORY_SHARED_FOLDER: "共有設定の変更",
-    CATEGORY_GLOBAL: "サーバー設定の変更",
+    CATEGORY_SHARE: "共有設定の変更",
+    CATEGORY_SERVER: "サーバー設定の変更",
     CATEGORY_DIRECT_EDIT: "エディターで直接編集",
     CATEGORY_RESTORE: "設定の復元",
 }

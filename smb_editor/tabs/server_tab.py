@@ -15,7 +15,7 @@ from ..smb_writer import SmbConfWriter
 from .. import system_utils
 
 
-class GlobalTab(ttk.Frame):
+class ServerTab(ttk.Frame):
     """サーバー設定タブ"""
 
     def __init__(self, parent: tk.Widget, app):

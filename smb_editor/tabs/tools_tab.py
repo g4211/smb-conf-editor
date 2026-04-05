@@ -157,7 +157,7 @@ class UserRow:
         self.update_ui()
 
 
-class AdvancedTab(ttk.Frame):
+class ToolsTab(ttk.Frame):
     """ツールタブ"""
 
     def __init__(self, parent: tk.Widget, app):

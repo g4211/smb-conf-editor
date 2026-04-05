@@ -15,7 +15,7 @@ from ..dialogs.content_viewer import show_content
 from ..dialogs.diff_viewer import show_diff
 
 
-class HistoryTab(ttk.Frame):
+class BackupTab(ttk.Frame):
     """バックアップタブ"""
 
     def __init__(self, parent: tk.Widget, app):

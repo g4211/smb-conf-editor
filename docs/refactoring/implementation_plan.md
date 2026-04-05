@@ -1,38 +1,38 @@
-# リファクタリング実装計画 (Implementation Plan)
+# 名称変更に伴うリネーム実装計画
 
-## 背景と目的
-現在、すべてのPythonファイルの行数が約4,000行に達しており、特に一部のUI関連ファイル (`shares_tab.py`, `advanced_tab.py`, `app.py`) や処理関数 (`apply_changes`, `_direct_edit`) は1関数で100行を超えるモノリシックな状態になっています。今後の保守性・可読性・拡張性を高めるため、ファイル全域の構造整理およびコードクリーンアップを実施します。
+ユーザーがUI上で採用した新しい名称（ツール、サーバー設定、バックアップ等）に合わせて、内部の変数名、クラス名、およびファイル名を改名し、齟齬を解消します。
 
-## 対象ファイルと規模
-Python全コードベース（計19ファイル、約4,000行）および `helpers/smb-helper.sh`。
+## 対象となる変更点
 
-## リファクタリングの具体的な変更内容
+### 1. タブのファイル名変更
+- `smb_editor/tabs/advanced_tab.py` ➔ `smb_editor/tabs/tools_tab.py`
+- `smb_editor/tabs/global_tab.py` ➔ `smb_editor/tabs/server_tab.py`
+- `smb_editor/tabs/history_tab.py` ➔ `smb_editor/tabs/backup_tab.py`
 
-全体を以下のフェーズに分けて段階的に実施します。
+### 2. クラス名の変更
+- `AdvancedTab` ➔ `ToolsTab`
+- `GlobalTab` ➔ `ServerTab`
+- `HistoryTab` ➔ `BackupTab`
 
-### 1. 巨大メソッドの分割（UIとロジックの分離）
-各タブにおける長大な `_build_ui()` や巨大なロジックをより小さなコンポーネント関数へと分割します。
-- `AdvancedTab._build_ui()` → `_build_user_management_section()`, `_build_direct_edit_section()`, `_build_log_section()`
-- `SharesTab._build_ui()` → `_build_share_list()`, `_build_basic_settings()`, `_build_access_control()`
-- `ApplyManager.apply_changes()` → 設定JSONの組み立て、コマンドの実行、結果のパースといった責務ごとに分割。
+### 3. 変数名の変更
+- `app.py` におけるインスタンス変数
+  - `self._advanced_tab` ➔ `self._tools_tab`
+  - `self._global_tab` ➔ `self._server_tab`
+  - `self._history_tab` ➔ `self._backup_tab`
+- その他関連モジュール内での `global` や `advanced`, `history` などの命名を `server`, `tools`, `backup` に統一
 
-### 2. 不要コードと未使用インポートの削除
-ASTや目視で検知された未使用モジュール変数や、過去の仕様変更で使われなくなったパラメータを整理し、クリーンな状態にします。
+## User Review Required
 
-### 3. 一貫した型ヒント（Type Hinting）と Docstring の拡充
-- 関数・メソッドの引数および戻り値に対して、PythonのType Hints（`Optional`, `list`, `dict` 等）を漏れなく付与します。
-- コメントやDocstringはユーザー規約（RULE[user_global]）に従いすべて**日本語**で統一・追記し、各処理の意図をわかりやすく記述します。
+> [!WARNING]
+> バックアップカテゴリー名 (`CATEGORY_SHARED_FOLDER`, `CATEGORY_GLOBAL`) を定数ファイル (`constants.py`) で内部的に管理していますが、これを `CATEGORY_SHARE`, `CATEGORY_SERVER` のように変更すると、既存の `history.json` に保存されたカテゴリーの名前と一致しなくなってしまいます（過去のバックアップのカテゴリーが正しく表示されなくなる等の影響）。
+> 
+> これに対する対応方針として、以下のどちらが良いかご確認をお願いします：
+> 1. **定数の値（内部データ文字列）自体は過去との互換性のために変更せず、ソース内の変数名（`CATEGORY_SERVER`など）だけを変更する**
+> 2. **データ文字列も変更する（過去の履歴については表示が少し崩れるか、歴史ファイル「history.json」も一緒にマイグレーション書き換えを行う）**
 
-### 4. ハードコードされた値（マジックナンバー・文字列）の分離
-UI上で共通して使われるマージン値、タイムアウト値などは `constants.py` へ移動させ再利用性を高めます。
-
-## ユーザーへの確認事項 (Open Questions)
-> [!IMPORTANT]
-> 以下の点についてユーザーの確認・合意を求めます。
-
-1. **ディレクトリ構造**: ファイルやフォルダの階層（`dialogs/`, `tabs/` など）自体は変更せず、**ファイル内部の構造整理**に特化する方針でよろしいでしょうか？
-2. **ツールの実行**: 大規模な書き換えとなるため、修正途中でも一部テストを実行しながら進行します。安全のため、実行前に都度バックアップは作成されますが、Gitなどでプロジェクトの状態がコミットされているとより安全です（現在Git管理下でしょうか？）。
-3. **優先度**: 上記以外に、「このコードの書き方が気になっていた」「この変数の命名規則を変えたい」等のご希望があれば教えてください。
-
-## 確認事項
-上記プランでよろしければ、「承認」や「進めてください」などのご返答をお願いします。いただいたのちに、フェーズ1から実行と `task.md` の作成を実施します。
+## 手順
+1. `git mv` コマンドを使用して対象タブファイルをリネーム（Gitの履歴を保持）
+2. `app.py`, `messages.py`, `constants.py` のクラス名および変数名のインポートを修正
+3. 最新の `history.json` へのマイグレーション（ユーザーの要望に応じて）
+4. ASTチェックおよびアプリケーションの起動確認
+5. コミットして提出

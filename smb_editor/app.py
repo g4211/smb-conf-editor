@@ -25,9 +25,9 @@ from .smb_parser import SmbConfParser, SmbConfig
 from .smb_writer import SmbConfWriter
 from . import system_utils
 from .tabs.shares_tab import SharesTab
-from .tabs.global_tab import GlobalTab
-from .tabs.advanced_tab import AdvancedTab
-from .tabs.history_tab import HistoryTab
+from .tabs.server_tab import ServerTab
+from .tabs.tools_tab import ToolsTab
+from .tabs.backup_tab import BackupTab
 
 
 class SmbConfEditorApp:
@@ -176,14 +176,14 @@ class SmbConfEditorApp:
         self._notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
 
         self._shares_tab = SharesTab(self._notebook, self)
-        self._global_tab = GlobalTab(self._notebook, self)
-        self._advanced_tab = AdvancedTab(self._notebook, self)
-        self._history_tab = HistoryTab(self._notebook, self)
+        self._server_tab = ServerTab(self._notebook, self)
+        self._tools_tab = ToolsTab(self._notebook, self)
+        self._backup_tab = BackupTab(self._notebook, self)
 
         self._notebook.add(self._shares_tab, text=UI.TAB_SHARES)
-        self._notebook.add(self._global_tab, text=UI.TAB_GLOBAL)
-        self._notebook.add(self._advanced_tab, text=UI.TAB_ADVANCED)
-        self._notebook.add(self._history_tab, text=UI.TAB_HISTORY)
+        self._notebook.add(self._server_tab, text=UI.TAB_GLOBAL)
+        self._notebook.add(self._tools_tab, text=UI.TAB_ADVANCED)
+        self._notebook.add(self._backup_tab, text=UI.TAB_HISTORY)
 
     def _build_statusbar(self) -> None:
         """下部のステータスバーを構築する"""
@@ -208,8 +208,8 @@ class SmbConfEditorApp:
             return
 
         # === サーバー設定タブの変更を収集 ===
-        global_result = self._global_tab.collect_changes(writer)
-        if global_result is None:
+        server_result = self._server_tab.collect_changes(writer)
+        if server_result is None:
             # バリデーションエラー → 中断
             return
 
@@ -230,7 +230,7 @@ class SmbConfEditorApp:
 
         result = self._apply_manager.apply_changes(
             new_conf_content=new_content,
-            category=const.CATEGORY_SHARED_FOLDER,
+            category=const.CATEGORY_SHARE,
             comment=auto_comment,
             samba_users_to_add=samba_users if samba_users else None,
             new_share_dirs=new_dirs if new_dirs else None,
@@ -296,9 +296,9 @@ class SmbConfEditorApp:
 
         # 各タブにデータを配信
         self._shares_tab.load_data(self._config, self._users)
-        self._global_tab.load_data(self._config)
-        self._advanced_tab.load_data()
-        self._history_tab.load_data()
+        self._server_tab.load_data(self._config)
+        self._tools_tab.load_data()
+        self._backup_tab.load_data()
 
         # ステータスバーを更新
         section_count = len(self._config.sections)
