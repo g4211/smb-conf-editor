@@ -17,7 +17,7 @@ class ConfigManager:
     def __init__(self):
         """設定マネージャーを初期化する"""
         # 設定ファイルのパスを構築
-        self._config_path = os.path.join(const.get_app_dir(), const.CONFIG_FILENAME)
+        self._config_path = os.path.join(const.APP_CONFIG_DIR, const.CONFIG_FILENAME)
         # デフォルト設定を定義
         self._defaults = {
             "editor": const.DEFAULT_EDITOR,                  # 直接編集で使用するエディター
@@ -71,9 +71,9 @@ class ConfigManager:
     def get_backup_dir(self) -> str:
         """バックアップディレクトリの絶対パスを取得する"""
         backup_dir = self.get("backup_dir", const.DEFAULT_BACKUP_DIR)
-        # 相対パスの場合はアプリディレクトリからの相対パスとして解決
+        # 相対パスの場合は設定ディレクトリからの相対パスとして解決（システムの規約に合わせるため）
         if not os.path.isabs(backup_dir):
-            backup_dir = os.path.join(const.get_app_dir(), backup_dir)
+            backup_dir = os.path.join(const.APP_CONFIG_DIR, backup_dir)
         return os.path.abspath(backup_dir)
 
     def get_all(self) -> dict:

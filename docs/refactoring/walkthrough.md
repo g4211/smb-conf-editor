@@ -1,27 +1,37 @@
-# リファクタリング完了報告 (Walkthrough)
+# 設定パスおよびデフォルトエディターの修正の確認
 
-Samba設定エディターのコードベース全体に対するリファクタリングが完了しました。ユーザーの皆さまが安全・快適にSambaの設定管理を行えるよう、プロジェクト内のモジュール設計・UI構築の巨大関数の切り出し等を行い、保守性と可読性を段階的に高めました。
+## 修正内容
+Debianパッケージ（`.deb`）としてシステムにインストール可能な構成へ修正するため、パスやデフォルトエディターの見直しを実施しました。
 
-## 実施した内容
+- **`smb_editor/constants.py`の修正**:
+  - `APP_CONFIG_DIR` を追加し、`os.path.expanduser("~/.config/smb-conf-editor")` を定義しました。
+  - Ubuntu 24.04 の変更に合わせ、`DEFAULT_EDITOR` を `"gnome-text-editor"` に変更しました。
+  - `DEFAULT_BACKUP_DIR` が `APP_CONFIG_DIR` 配下の `backups` になるように定義を変更しました。
 
-### 1. ディレクトリ構造・パッケージの整理
-- 初期状態からGitを導入し、変更履歴を追いやすくしました。
-- 古いUIとロジックが密結合していたディレクトリ群を見直し、未使用のインポートなどを取り除きました。
+- **`smb_editor/config_manager.py`の修正**:
+  - 設定ファイル (`config.json`) の保存先が `APP_CONFIG_DIR` を参照するように修正しました（前回セッションで完了済み）。
+  - `get_backup_dir()` で相対パス（例: `"backups"`）が設定されている場合に、解決の基準を「アプリの実行ディレクトリ」から「設定ディレクトリ（`APP_CONFIG_DIR`）」へ変更しました。これにより、アプリのインストール場所によらず、バックアップは常に `~/.config/smb-conf-editor/backups/` 配下に格納されます。
 
-### 2. UI構築ロジックの分割（巨大関数の安全な分割）
-ユーザーインターフェースを構成する `_build_ui` メソッドが全体的に100行を超える巨大関数になっていました。これを各論理セクションごとに分割し、可読性を大幅に向上させました。
-- 各タブ名の日本語名称変更に伴う一斉リネーム (`advanced` -> `tools`, `global` -> `server`, `history` -> `backup`)
+- **`smb_editor/backup_manager.py`の確認**:
+  - 履歴ファイル (`history.json`) の保存パスがバックアップディレクトリ配下になっており、設定ディレクトリに正常に追従していることを確認しました。
 
-### 3. 主ロジック（apply_manager.pyなど）のリファクタリング
-- 最も複雑な `apply_manager.py` における `apply_changes` を、「JSONの構築」「一時ファイルの処理」「コマンドの実装」「履歴データの同期」といった複数のプライベート関数に分割しました。
-- バックアップへのメタデータ書き込み機能のバグ修正や、`smb.conf` 内で空となった項目の削除機能の徹底を実装しました。
+## テスト結果（動作確認）
+以下の検証用スクリプトを利用して、パスが正確に解決されることを確認しました。
 
-### 4. パスワード不要化（Polkit方式）設定の追加機能
-新たに `system-config-samba` と同様の「アプリケーション実行時のパスワード不要化」機能を実現するため、専用のセットアップスクリプトを導入しました。
+```python
+import os, sys
+sys.path.insert(0, os.path.abspath('.'))
+from smb_editor.config_manager import ConfigManager
 
-#### `setup-polkit.sh` の導入
-- 本スクリプトを実行すると、現在のアプリフォルダ構成における `smb-helper.sh` の絶対パスを自動検出し、無制限実行を許可する専用のPolkitポリシーXMLファイル (`com.smbconfeditor.helper.policy`) を `/usr/share/polkit-1/actions/` へインストールします。
-- これにより、GUI上の「適用」を押下した際のパスワードプロンプトが一切省略され、素早く滑らかなユーザー体験が実現されます。
+c = ConfigManager()
+c.save()
+print('Config path:', c.config_path)
+print('Backup dir:', c.get_backup_dir())
+```
 
-> [!TIP]
-> アプリケーションのフォルダを別の場所に移動させた場合、Polkitの絶対パスの整合性が崩れるため再度パスワードが求められるようになります。その場合は移動先で再度 `$ bash setup-polkit.sh` を実行するだけでアクセスパスが更新されます。
+**実行結果:**
+```text
+Config path: /home/a/.config/smb-conf-editor/config.json
+Backup dir: /home/a/.config/smb-conf-editor/backups
+```
+これにより、期待通り一般ユーザーの権限で管理可能なディレクトリ構造にファイルが保存されることを確認しました。

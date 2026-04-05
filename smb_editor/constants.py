@@ -19,10 +19,12 @@ DEFAULT_SMB_CONF = "/usr/share/samba/smb.conf"
 DEFAULT_LOG_DIR = "/var/log/samba"
 
 # === アプリケーション設定のデフォルト値 ===
-# 直接編集で使用するデフォルトのエディター
-DEFAULT_EDITOR = "gedit"
-# バックアップディレクトリのデフォルトパス（アプリディレクトリからの相対パス）
-DEFAULT_BACKUP_DIR = "./backups"
+APP_CONFIG_DIR = os.path.expanduser("~/.config/smb-conf-editor")
+
+# 直接編集で使用するデフォルトのエディター (Ubuntu 24.04 デフォルト)
+DEFAULT_EDITOR = "gnome-text-editor"
+# バックアップディレクトリのデフォルトパス
+DEFAULT_BACKUP_DIR = os.path.join(APP_CONFIG_DIR, "backups")
 # バックアップファイルの最大保持数
 DEFAULT_MAX_BACKUPS = 5
 

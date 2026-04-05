@@ -1,4 +1,6 @@
-- `[x]` `setup-polkit.sh` の作成
-- `[x]` `setup-polkit.sh` に実行権限を付与
-- `[ ]` `walkthrough.md` の更新
-- `[ ]` Gitコミット
+- `[x]` `constants.py` の修正（デフォルトエディターとバックアップパスの変更）
+- `[x]` `config_manager.py` の修正（設定ファイルの保存先を `~/.config/smb-conf-editor/` へ変更）
+- `[x]` `backup_manager.py` の履歴ファイルの保存先確認と修正
+- `[x]` 動作確認
+- `[x]` `walkthrough.md` の更新
+- `[/]` Gitコミット
