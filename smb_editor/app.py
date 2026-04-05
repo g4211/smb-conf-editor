@@ -219,7 +219,7 @@ class SmbConfEditorApp:
         # === バックアップコメントを自動生成 ===
         comment_parts = shares_result.get("comment_parts", [])
         if comment_parts:
-            auto_comment = "共有設定の変更: " + "、".join(comment_parts)
+            auto_comment = "共有設定/サーバー設定の変更: " + "、".join(comment_parts)
         else:
             auto_comment = "共有設定/サーバー設定の変更"
 
