@@ -182,17 +182,7 @@ class ApplyManager:
 
     def _update_backup_history(self, filename: str, now, category: str, comment: str):
         """バックアップ履歴に新しいエントリを追加する"""
-        from .backup_manager import BackupEntry
-        entry = BackupEntry(
-            filename=filename,
-            timestamp=now.isoformat(timespec='seconds'),
-            comment=comment,
-            exclude_from_deletion=False,
-            category=category,
-        )
-        self._backup_manager._history.append(entry)
-        self._backup_manager._save_history()
-        self._backup_manager.delete_old_backups()
+        self._backup_manager.register_backup_metadata(filename, now, category, comment)
 
     def read_current_conf(self) -> Optional[str]:
         """現在のsmb.confの内容を読み取る（ヘルパー経由）"""

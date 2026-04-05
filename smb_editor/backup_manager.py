@@ -64,42 +64,54 @@ class BackupManager:
         except IOError as e:
             print(f"エラー: 履歴ファイルの保存に失敗しました: {e}")
 
+    def register_backup_metadata(self, filename: str, now: datetime, category: str, comment: str) -> None:
+        """
+        すでに作成されたバックアップファイルに対するメタデータ登録を行う。
+        現在のsmb.conf (smb.conf[古]) 用のエントリを探してバックアップに昇格させ、
+        新たな smb.conf (smb.conf[新]) 用のエントリを作成する。
+        """
+        active_entry = next((e for e in self._history if e.filename == "smb.conf"), None)
+        
+        if active_entry:
+            active_entry.filename = filename
+            active_entry.timestamp = now.isoformat(timespec='seconds')
+        else:
+            self._history.append(BackupEntry(
+                filename=filename,
+                timestamp=now.isoformat(timespec='seconds'),
+                comment="初期設定",
+                exclude_from_deletion=False,
+                category=""
+            ))
+
+        new_active_entry = BackupEntry(
+            filename="smb.conf",
+            timestamp="",
+            comment=comment,
+            exclude_from_deletion=False,
+            category=category
+        )
+        self._history.append(new_active_entry)
+        self._save_history()
+        self.delete_old_backups()
+
     def create_backup(self, source_path: str, category: str,
                       comment: str = "") -> Optional[str]:
         """
-        smb.confのバックアップを作成する。
-        source_path: バックアップ元のファイルパス
-        category: 変更カテゴリー（shared_folder, global, direct_edit, restore）
-        comment: ユーザーコメント
-        戻り値: バックアップファイル名（失敗時はNone）
+        smb.confのファイルコピーによるバックアップを作成し、履歴を登録する。
         """
-        # タイムスタンプからファイル名を生成
         now = datetime.now()
         timestamp_str = now.strftime(const.BACKUP_DATETIME_FORMAT)
         filename = f"{const.BACKUP_PREFIX}{timestamp_str}{const.BACKUP_EXTENSION}"
         backup_path = os.path.join(self._backup_dir, filename)
 
         try:
-            # ファイルをバックアップディレクトリにコピー
             shutil.copy2(source_path, backup_path)
         except IOError as e:
             print(f"エラー: バックアップの作成に失敗しました: {e}")
             return None
 
-        # 履歴エントリを作成
-        entry = BackupEntry(
-            filename=filename,
-            timestamp=now.isoformat(timespec='seconds'),
-            comment=comment,
-            exclude_from_deletion=False,
-            category=category,
-        )
-        self._history.append(entry)
-        self._save_history()
-
-        # 古いバックアップを削除
-        self.delete_old_backups()
-
+        self.register_backup_metadata(filename, now, category, comment)
         return filename
 
     def restore_backup(self, filename: str, target_path: str) -> bool:
@@ -123,8 +135,8 @@ class BackupManager:
         バックアップ最大数を超えた古いファイルを削除する。
         削除対象から除外されたファイルはスキップする。
         """
-        # 除外されていないエントリのみ対象
-        deletable = [e for e in self._history if not e.exclude_from_deletion]
+        # 除外されていないエントリかつ、smb.conf以外のバックアップのみ対象
+        deletable = [e for e in self._history if not e.exclude_from_deletion and e.filename != "smb.conf"]
         # タイムスタンプでソート（古い順）
         deletable.sort(key=lambda e: e.timestamp)
 
@@ -138,15 +150,14 @@ class BackupManager:
             except IOError as e:
                 print(f"警告: バックアップファイルの削除に失敗しました: {e}")
             # 履歴からも削除
-            self._history = [e for e in self._history
-                           if e.filename != entry_to_delete.filename]
+            self._history = [e for e in self._history if e.filename != entry_to_delete.filename]
 
         self._save_history()
 
     def get_backup_list(self) -> list[BackupEntry]:
-        """バックアップ一覧を返す（新しい順）"""
-        sorted_list = sorted(self._history, key=lambda e: e.timestamp, reverse=True)
-        return sorted_list
+        """バックアップ一覧を返す（新しい順、smb.confエントリは除外）"""
+        target_list = [e for e in self._history if e.filename != "smb.conf"]
+        return sorted(target_list, key=lambda e: e.timestamp, reverse=True)
 
     def update_comment(self, filename: str, comment: str) -> None:
         """バックアップエントリのコメントを更新する"""
