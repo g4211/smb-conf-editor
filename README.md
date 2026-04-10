@@ -10,6 +10,7 @@ Ubuntu向けのSamba設定ファイル（`/etc/samba/smb.conf`）をGUIで編集
 - **ログ表示**: Sambaログファイルの閲覧（検索・自動更新機能付き）
 - **バックアップ/復元**: 設定変更時の自動バックアップと復元機能
 - **差分表示**: バックアップと現在の設定の差分をカラー表示
+- **Sambaユーザー管理**: ユーザーの登録・解除・有効化・無効化
 
 ## 必要環境
 
@@ -17,11 +18,23 @@ Ubuntu向けのSamba設定ファイル（`/etc/samba/smb.conf`）をGUIで編集
 - Python 3.10以降
 - Samba（`samba`, `samba-common-bin`）
 - tkinter（通常はPythonに同梱）
-- PolicyKit（`policykit-1`）
+- PolicyKit（`polkitd`, `pkexec`）
 
 ## インストール
 
-### 1. 依存パッケージのインストール
+### 方法1: DEBパッケージ（推奨）
+
+```bash
+# パッケージをビルド
+./build-deb.sh
+
+# パッケージをインストール
+sudo apt install ./build_deb/smb-conf-editor_*.deb
+```
+
+### 方法2: 手動インストール
+
+#### 1. 依存パッケージのインストール
 
 ```bash
 # Sambaとtkinterのインストール（未インストールの場合）
@@ -31,7 +44,7 @@ sudo apt install samba samba-common-bin python3-tk
 pip3 install -r requirements.txt
 ```
 
-### 2. ヘルパースクリプトの設定
+#### 2. ヘルパースクリプトの設定
 
 ヘルパースクリプトに実行権限を付与します:
 
@@ -39,22 +52,16 @@ pip3 install -r requirements.txt
 chmod +x helpers/smb-helper.sh
 ```
 
-### 3. PolicyKitポリシーの設定（推奨）
+#### 3. PolicyKitポリシーの設定（パスワード入力不要にする）
 
-PolicyKitポリシーファイルをシステムにインストールすると、
-pkexecの認証ダイアログにアプリケーション名が表示されます:
+セットアップスクリプトを実行すると、以降の操作でパスワード入力が不要になります:
 
 ```bash
-# ヘルパースクリプトをシステムパスにコピー
-sudo cp helpers/smb-helper.sh /usr/local/bin/smb-helper.sh
-sudo chmod 755 /usr/local/bin/smb-helper.sh
-
-# PolicyKitポリシーファイルをインストール
-sudo cp helpers/com.github.smb-conf-editor.policy /usr/share/polkit-1/actions/
+bash scripts/setup-polkit.sh
 ```
 
 > **注意**: PolicyKitポリシーをインストールしない場合でも、
-> pkexecによる認証は動作しますが、一般的な認証ダイアログが表示されます。
+> pkexecによる認証は動作しますが、操作のたびにパスワード入力が求められます。
 
 ## 使い方
 
@@ -81,11 +88,16 @@ python3 main.py
 ```
 smb-conf-editor/
 ├── main.py              # エントリーポイント
-├── config.json          # アプリ設定（自動生成）
 ├── requirements.txt     # 依存パッケージ
+├── build-deb.sh         # DEBパッケージビルドスクリプト
 ├── helpers/
-│   ├── smb-helper.sh    # root権限ヘルパースクリプト
-│   └── *.policy         # PolicyKitポリシー
+│   └── smb-helper.sh    # root権限ヘルパースクリプト
+├── scripts/
+│   └── setup-polkit.sh  # Polkitポリシーセットアップ（開発環境用）
+├── packaging/
+│   ├── com.smbconfeditor.helper.policy  # Polkitポリシー（DEBパッケージ用）
+│   ├── smb-conf-editor.desktop          # デスクトップエントリ
+│   └── smb-conf-editor.png             # アプリケーションアイコン
 ├── smb_editor/
 │   ├── app.py           # メインアプリケーション
 │   ├── smb_parser.py    # smb.confパーサー
@@ -95,9 +107,10 @@ smb-conf-editor/
 │   ├── apply_manager.py # 適用処理
 │   ├── config_manager.py # 設定管理
 │   ├── constants.py     # 定数定義
+│   ├── messages.py      # メッセージ定義
 │   ├── tabs/            # UIタブ
 │   └── dialogs/         # ダイアログ
-└── backups/             # バックアップファイル（自動生成）
+└── docs/                # ドキュメント
 ```
 
 ## ライセンス

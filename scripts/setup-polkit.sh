@@ -1,8 +1,9 @@
 #!/bin/bash
 
-# 現在のスクリプトが存在するディレクトリの絶対パスを取得
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HELPER_PATH="$DIR/smb-helper.sh"
+# プロジェクトルートディレクトリの絶対パスを取得（scripts/ の親ディレクトリ）
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+HELPER_PATH="$PROJECT_DIR/helpers/smb-helper.sh"
 
 if [ ! -f "$HELPER_PATH" ]; then
     echo "エラー: $HELPER_PATH が見つかりません。"
