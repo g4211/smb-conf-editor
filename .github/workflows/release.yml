@@ -1,0 +1,158 @@
+# =============================================================================
+# リリースとAPTリポジトリへの自動デプロイ
+#
+# mainブランチへのpush時に、APP_VERSIONの変更を検出すると:
+#   1. debパッケージをビルド
+#   2. GitHub Releaseを作成（debファイルを添付）
+#   3. APTリポジトリ(apt-repo)を更新してGitHub Pagesにデプロイ
+# =============================================================================
+
+name: リリースとデプロイ
+
+on:
+  push:
+    branches: [main]
+
+# GitHub Releaseの作成に必要な権限
+permissions:
+  contents: write
+
+jobs:
+  # ===========================================================================
+  # ジョブ1: バージョン変更の検出
+  # ===========================================================================
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version_changed: ${{ steps.check.outputs.changed }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      # リポジトリをチェックアウト（前回コミットとの比較のためdepth=2）
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      # constants.py のAPP_VERSIONを前回コミットと比較
+      - name: バージョン変更の検出
+        id: check
+        run: |
+          # 現在のバージョンを取得
+          CURRENT=$(grep -oP 'APP_VERSION\s*=\s*"\K[^"]+' smb_editor/constants.py)
+          echo "現在のバージョン: $CURRENT"
+
+          # 前回コミットのバージョンを取得（初回pushの場合は空文字）
+          PREVIOUS=$(git show HEAD~1:smb_editor/constants.py 2>/dev/null \
+            | grep -oP 'APP_VERSION\s*=\s*"\K[^"]+' || echo "")
+          echo "前回のバージョン: ${PREVIOUS:-（なし）}"
+
+          # バージョンが変更されたか判定
+          if [ "$CURRENT" != "$PREVIOUS" ]; then
+            echo "✅ バージョン変更を検出: ${PREVIOUS:-なし} → $CURRENT"
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "version=$CURRENT" >> $GITHUB_OUTPUT
+          else
+            echo "-- バージョン変更なし（スキップ）"
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+  # ===========================================================================
+  # ジョブ2: ビルドとデプロイ（バージョン変更時のみ実行）
+  # ===========================================================================
+  build-and-deploy:
+    needs: check-version
+    if: needs.check-version.outputs.version_changed == 'true'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.check-version.outputs.version }}
+      GPG_KEY_EMAIL: "guzumi@gmail.com"
+
+    steps:
+      # ----- リポジトリのチェックアウト -----
+      - uses: actions/checkout@v4
+
+      # ----- ビルドツールのインストール -----
+      - name: ビルドツールのインストール
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev apt-utils fakeroot python3-pip gnupg
+
+      # ----- debパッケージのビルド -----
+      - name: debパッケージのビルド
+        run: |
+          bash build-deb.sh
+          echo "ビルドされたパッケージ:"
+          ls -la build_deb/*.deb
+
+      # ----- GitHub Releaseの作成 -----
+      - name: GitHub Releaseの作成
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: v${{ env.VERSION }}
+          body: |
+            ## smb-conf-editor v${{ env.VERSION }}
+
+            ### インストール方法
+
+            #### APTリポジトリから（推奨）
+            ```bash
+            curl -fsSL https://g4211.github.io/apt-repo/install.sh | bash
+            sudo apt install smb-conf-editor
+            ```
+
+            #### debパッケージを直接インストール
+            ```bash
+            sudo apt install ./smb-conf-editor_${{ env.VERSION }}_all.deb
+            ```
+          files: build_deb/*.deb
+          make_latest: true
+
+      # ----- GPG秘密鍵のインポート -----
+      - name: GPG秘密鍵のインポート
+        run: |
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+
+      # ----- APTリポジトリの更新 -----
+      - name: APTリポジトリの更新
+        run: |
+          # apt-repoリポジトリをクローン
+          git clone https://x-access-token:${{ secrets.APT_REPO_TOKEN }}@github.com/g4211/apt-repo.git /tmp/apt-repo
+          cd /tmp/apt-repo
+
+          # 古いdebファイルを削除し、新しいdebファイルをコピー
+          DEB_FILE=$(find $GITHUB_WORKSPACE/build_deb -name "*.deb" -type f | head -1)
+          DEB_BASENAME=$(basename "$DEB_FILE")
+          PKG_NAME=$(dpkg-deb --field "$DEB_FILE" Package)
+          rm -f "${PKG_NAME}_"*".deb"
+          cp "$DEB_FILE" .
+
+          # Packagesファイルの生成（debファイルのメタデータ）
+          dpkg-scanpackages --multiversion . > Packages
+          gzip -9c Packages > Packages.gz
+
+          # Releaseファイルの生成（チェックサム付き）
+          apt-ftparchive release \
+            -o APT::FTPArchive::Release::Origin="g4211" \
+            -o APT::FTPArchive::Release::Label="g4211 APT Repository" \
+            -o APT::FTPArchive::Release::Suite="stable" \
+            -o APT::FTPArchive::Release::Architectures="all" \
+            . > Release
+
+          # GPG署名（分離署名＋クリア署名）
+          rm -f Release.gpg InRelease
+          gpg --default-key "$GPG_KEY_EMAIL" --batch --yes \
+            --pinentry-mode loopback --passphrase "${{ secrets.GPG_PASSPHRASE }}" \
+            -abs -o Release.gpg Release
+          gpg --default-key "$GPG_KEY_EMAIL" --batch --yes \
+            --pinentry-mode loopback --passphrase "${{ secrets.GPG_PASSPHRASE }}" \
+            --clearsign -o InRelease Release
+
+          # GPG公開鍵をエクスポート
+          gpg --armor --export "$GPG_KEY_EMAIL" > KEY.gpg
+
+          # コミット＆プッシュ
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "パッケージ更新: v${VERSION} (${DEB_BASENAME})"
+          git push

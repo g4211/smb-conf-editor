@@ -36,13 +36,16 @@ class SmbConfEditorApp:
     def __init__(self):
         """アプリケーションを初期化する"""
         # tkinter ルートウィンドウを作成
-        self._root = tk.Tk()
+        self._root = tk.Tk(className="smb-conf-editor")
         self._root.title(f"{const.APP_NAME} v{const.APP_VERSION}")
         self._root.geometry(f"{const.WINDOW_WIDTH}x{const.WINDOW_HEIGHT}")
         self._root.minsize(800, 600)
 
         # マネージャーの初期化
         self._config_manager = ConfigManager()
+
+        # ウィンドウアイコンの設定
+        self._set_window_icon()
 
         # Sun Valley テーマを適用（config.jsonの読み込み後に実行）
         self._apply_theme()
@@ -70,6 +73,19 @@ class SmbConfEditorApp:
 
         # データを読み込む
         self.reload_data()
+
+    def _set_window_icon(self) -> None:
+        """ウィンドウのアイコンを設定する"""
+        try:
+            prod_icon_path = "/usr/share/pixmaps/smb-conf-editor.png"
+            dev_icon_path = os.path.join(const.get_app_dir(), "packaging", "smb-conf-editor.png")
+            icon_path = prod_icon_path if os.path.exists(prod_icon_path) else dev_icon_path
+            
+            if os.path.exists(icon_path):
+                img = tk.PhotoImage(file=icon_path)
+                self._root.iconphoto(True, img)
+        except Exception as e:
+            print(f"アイコンの設定に失敗しました: {e}")
 
     def _detect_os_theme(self) -> str:
         """システムのダーク/ライト設定を検出する"""
@@ -216,6 +232,16 @@ class SmbConfEditorApp:
         # === 変更後の内容を生成 ===
         new_content = writer.generate_content()
 
+        # === 各種変更データの取得と差分チェック ===
+        samba_users = shares_result.get("samba_users", [])
+        new_dirs = shares_result.get("new_dirs", [])
+        enable_users = shares_result.get("enable_users", [])
+        current_content = self._apply_manager.read_current_conf() or ""
+
+        if not samba_users and not new_dirs and not enable_users and new_content.strip() == current_content.strip():
+            messagebox.showinfo("適用", "設定に変更がありません。", parent=self._root)
+            return
+
         # === バックアップコメントを自動生成 ===
         comment_parts = shares_result.get("comment_parts", [])
         if comment_parts:
@@ -224,10 +250,6 @@ class SmbConfEditorApp:
             auto_comment = "共有設定/サーバー設定の変更"
 
         # === 適用処理を実行（1回のpkexec） ===
-        samba_users = shares_result.get("samba_users", [])
-        new_dirs = shares_result.get("new_dirs", [])
-        enable_users = shares_result.get("enable_users", [])
-
         result = self._apply_manager.apply_changes(
             new_conf_content=new_content,
             category=const.CATEGORY_SHARE,

@@ -3,4 +3,4 @@
 - `[x]` `backup_manager.py` の履歴ファイルの保存先確認と修正
 - `[x]` 動作確認
 - `[x]` `walkthrough.md` の更新
-- `[/]` Gitコミット
+- `[x]` Gitコミット

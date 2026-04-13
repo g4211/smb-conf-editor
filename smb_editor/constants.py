@@ -8,7 +8,7 @@ import os
 
 # === アプリケーション情報 ===
 APP_NAME = "Samba設定エディター"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 
 # === ファイルパス ===
 # Sambaメイン設定ファイルのパス
