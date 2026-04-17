@@ -5,6 +5,10 @@
 #   1. debパッケージをビルド
 #   2. GitHub Releaseを作成（debファイルを添付）
 #   3. APTリポジトリ(apt-repo)を更新してGitHub Pagesにデプロイ
+#
+# ロールバック対応:
+#   バージョンが下がった場合（例: 1.2.0 → 1.1.0）は、
+#   新しい方のReleaseを削除してからデプロイし直す
 # =============================================================================
 
 name: リリースとデプロイ
@@ -13,7 +17,7 @@ on:
   push:
     branches: [main]
 
-# GitHub Releaseの作成に必要な権限
+# GitHub Releaseの作成・削除に必要な権限
 permissions:
   contents: write
 
@@ -26,6 +30,8 @@ jobs:
     outputs:
       version_changed: ${{ steps.check.outputs.changed }}
       version: ${{ steps.check.outputs.version }}
+      previous_version: ${{ steps.check.outputs.previous_version }}
+      is_rollback: ${{ steps.check.outputs.is_rollback }}
     steps:
       # リポジトリをチェックアウト（前回コミットとの比較のためdepth=2）
       - uses: actions/checkout@v4
@@ -50,9 +56,24 @@ jobs:
             echo "✅ バージョン変更を検出: ${PREVIOUS:-なし} → $CURRENT"
             echo "changed=true" >> $GITHUB_OUTPUT
             echo "version=$CURRENT" >> $GITHUB_OUTPUT
+            echo "previous_version=$PREVIOUS" >> $GITHUB_OUTPUT
+
+            # バージョンの大小比較（セマンティックバージョニング対応）
+            # printf で各パートを0埋め10桁にして文字列比較する
+            VER_CUR=$(echo "$CURRENT" | awk -F. '{printf "%010d%010d%010d", $1, $2, $3}')
+            VER_PREV=$(echo "$PREVIOUS" | awk -F. '{printf "%010d%010d%010d", $1, $2, $3}')
+
+            if [ -n "$PREVIOUS" ] && [ "$VER_CUR" \< "$VER_PREV" ]; then
+              echo "⚠️ ロールバック検出: v$PREVIOUS → v$CURRENT"
+              echo "is_rollback=true" >> $GITHUB_OUTPUT
+            else
+              echo "📦 通常リリース: v$CURRENT"
+              echo "is_rollback=false" >> $GITHUB_OUTPUT
+            fi
           else
             echo "-- バージョン変更なし（スキップ）"
             echo "changed=false" >> $GITHUB_OUTPUT
+            echo "is_rollback=false" >> $GITHUB_OUTPUT
           fi
 
   # ===========================================================================
@@ -64,11 +85,29 @@ jobs:
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.check-version.outputs.version }}
+      PREVIOUS_VERSION: ${{ needs.check-version.outputs.previous_version }}
+      IS_ROLLBACK: ${{ needs.check-version.outputs.is_rollback }}
       GPG_KEY_EMAIL: "guzumi@gmail.com"
 
     steps:
       # ----- リポジトリのチェックアウト -----
       - uses: actions/checkout@v4
+
+      # ----- ロールバック時: 前回のReleaseを削除 -----
+      - name: 前回のReleaseを削除（ロールバック時のみ）
+        if: env.IS_ROLLBACK == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "⚠️ ロールバック: Release v${PREVIOUS_VERSION} を削除します"
+
+          # Releaseの削除（存在しない場合はスキップ）
+          if gh release view "v${PREVIOUS_VERSION}" > /dev/null 2>&1; then
+            gh release delete "v${PREVIOUS_VERSION}" --yes --cleanup-tag
+            echo "✅ Release v${PREVIOUS_VERSION} を削除しました"
+          else
+            echo "-- Release v${PREVIOUS_VERSION} は存在しません（スキップ）"
+          fi
 
       # ----- ビルドツールのインストール -----
       - name: ビルドツールのインストール
@@ -150,9 +189,16 @@ jobs:
           # GPG公開鍵をエクスポート
           gpg --armor --export "$GPG_KEY_EMAIL" > KEY.gpg
 
+          # コミットメッセージを場面に応じて変更
+          if [ "$IS_ROLLBACK" = "true" ]; then
+            COMMIT_MSG="ロールバック: v${PREVIOUS_VERSION} → v${VERSION} (${DEB_BASENAME})"
+          else
+            COMMIT_MSG="パッケージ更新: v${VERSION} (${DEB_BASENAME})"
+          fi
+
           # コミット＆プッシュ
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "パッケージ更新: v${VERSION} (${DEB_BASENAME})"
+          git commit -m "$COMMIT_MSG"
           git push

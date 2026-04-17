@@ -52,10 +52,14 @@ class UI:
     LBL_ENABLE_DISABLE = "有効/無効"
     LBL_DIRECT_EDIT = "設定ファイルの直接編集"
     LBL_USE_EDITOR = "使用するエディター:"
+    BTN_EDITOR_MANAGE = "エディター管理"
     BTN_EDIT_WITH_EDITOR = "エディターで編集"
     DESC_DIRECT_EDIT = "[エディターで編集]をクリックすると、指定したエディターでsmb.confを編集できます。\nエディター終了後、変更があれば構文チェック→適用を実行します。"
     LBL_LOG_FILE = "ログファイル"
     LBL_LOG_DIR = "ログディレクトリ:"
+
+    # 共有設定タブ - パーミッション
+    LBL_PERMISSION = "パーミッション:"
 
     # バックアップタブ (History)
     LBL_BACKUP_SETTINGS = "バックアップ設定"

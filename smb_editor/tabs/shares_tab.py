@@ -49,12 +49,18 @@ class ShareCard(ttk.LabelFrame):
         # 既存の設定がある場合は値を読み込む
         if section and not is_new:
             self._load_values(section)
+        elif is_new:
+            # 新規カードにはデフォルトパスをプリセット
+            default_path = const.NEW_SHARE_TEMPLATE.get("path", "")
+            if default_path:
+                self._path_var.set(default_path)
 
     def _build_ui(self) -> None:
         """UIウィジェットを構築する"""
         self._build_basic_section()
         self._build_comment_section()
         self._build_access_section()
+        self._build_permission_section()
         self._on_guest_toggled()
         self._path_entry.bind("<FocusOut>", self._on_path_focus_out)
 
@@ -120,6 +126,64 @@ class ShareCard(ttk.LabelFrame):
             font=("", 8), foreground="gray"
         ).pack(anchor=tk.W, padx=5)
 
+    def _build_permission_section(self) -> None:
+        """パーミッションプリセットセクションを構築する"""
+        perm_frame = ttk.Frame(self)
+        perm_frame.pack(fill=tk.X, pady=(0, 5))
+
+        ttk.Label(perm_frame, text="パーミッション:").pack(side=tk.LEFT, padx=(0, 5))
+
+        # プリセットのラベル一覧を構築
+        preset_labels = [p["label"] for p in const.PERMISSION_PRESETS]
+        self._perm_var = tk.StringVar(value=preset_labels[0] if preset_labels else "")
+        self._perm_combo = ttk.Combobox(
+            perm_frame, textvariable=self._perm_var,
+            values=preset_labels, state="readonly", width=20
+        )
+        self._perm_combo.pack(side=tk.LEFT, padx=(0, 10))
+
+        # 選択中のプリセットの詳細を表示するラベル
+        self._perm_detail_var = tk.StringVar()
+        ttk.Label(
+            perm_frame, textvariable=self._perm_detail_var,
+            font=("", 8), foreground="gray"
+        ).pack(side=tk.LEFT)
+
+        # Combobox変更時に詳細を更新
+        self._perm_combo.bind("<<ComboboxSelected>>", self._on_perm_selected)
+        # 初期表示を更新
+        self._update_perm_detail()
+
+    def _on_perm_selected(self, event=None) -> None:
+        """パーミッションプリセットが選択された時に詳細を更新する"""
+        self._update_perm_detail()
+
+    def _update_perm_detail(self) -> None:
+        """選択中のプリセットの詳細情報を更新する"""
+        preset = self._get_selected_preset()
+        if preset:
+            self._perm_detail_var.set(
+                f"(create: {preset['create_mask']}  dir: {preset['directory_mask']})"
+            )
+        else:
+            self._perm_detail_var.set("")
+
+    def _get_selected_preset(self) -> dict | None:
+        """現在選択中のプリセットを返す"""
+        label = self._perm_var.get()
+        for preset in const.PERMISSION_PRESETS:
+            if preset["label"] == label:
+                return preset
+        return None
+
+    def _detect_preset_from_values(self, create_mask: str, directory_mask: str) -> str:
+        """既存のcreate_mask/directory_maskから一致するプリセット名を返す"""
+        for preset in const.PERMISSION_PRESETS:
+            if preset["create_mask"] == create_mask and preset["directory_mask"] == directory_mask:
+                return preset["label"]
+        # 一致するプリセットがない場合は「全員が読み書き可能」をデフォルトにする
+        return const.PERMISSION_PRESETS[0]["label"] if const.PERMISSION_PRESETS else ""
+
     def _load_values(self, section: SmbSection) -> None:
         """既存のセクションから値を読み込む"""
         # 共有名
@@ -140,6 +204,13 @@ class ShareCard(ttk.LabelFrame):
         # ゲストアクセス
         guest_ok = section.get_param("guest ok") or "no"
         self._guest_var.set(guest_ok.lower() in ("yes", "true", "1"))
+
+        # パーミッションプリセットを既存値から検出
+        create_mask = section.get_param("create mask") or "0666"
+        directory_mask = section.get_param("directory mask") or "0777"
+        detected_preset = self._detect_preset_from_values(create_mask, directory_mask)
+        self._perm_var.set(detected_preset)
+        self._update_perm_detail()
 
         # valid users（ゲストでない場合）
         valid_users = section.get_param("valid users") or ""
@@ -238,7 +309,11 @@ class ShareCard(ttk.LabelFrame):
     @property
     def is_empty(self) -> bool:
         """カードが完全に空（未入力）かどうかを返す"""
-        return not self._name_var.get().strip() and not self._path_var.get().strip()
+        name = self._name_var.get().strip()
+        path = self._path_var.get().strip()
+        default_path = const.NEW_SHARE_TEMPLATE.get("path", "").strip()
+        # 名前が空で、パスも空またはデフォルト値のままなら未入力とみなす
+        return not name and (not path or path == default_path)
 
     def get_config(self) -> Optional[dict]:
         """
@@ -279,10 +354,25 @@ class ShareCard(ttk.LabelFrame):
         if self._guest_var.get():
             # ゲストアクセスの場合
             config["params"]["guest ok"] = "yes"
-            config["params"]["force user"] = "nobody"
-            config["params"]["force group"] = "nogroup"
-            config["params"]["create mask"] = "0777"
-            config["params"]["directory mask"] = "0777"
+
+            # /home配下の場合はログインユーザー、それ以外はnobody
+            if path.startswith("/home/"):
+                login_user = os.getenv("USER", "nobody")
+                config["params"]["force user"] = login_user
+                config["params"]["force group"] = login_user
+            else:
+                config["params"]["force user"] = "nobody"
+                config["params"]["force group"] = "nogroup"
+
+            # パーミッションプリセットの値を使用
+            preset = self._get_selected_preset()
+            if preset:
+                config["params"]["create mask"] = preset["create_mask"]
+                config["params"]["directory mask"] = preset["directory_mask"]
+            else:
+                # プリセットが見つからない場合はデフォルト
+                config["params"]["create mask"] = "0666"
+                config["params"]["directory mask"] = "0777"
         else:
             # ユーザー指定アクセスの場合
             config["params"]["guest ok"] = "no"
@@ -314,6 +404,15 @@ class ShareCard(ttk.LabelFrame):
                     parent=self
                 )
                 return None
+
+            # ユーザー指定アクセスにもパーミッションプリセットを適用
+            preset = self._get_selected_preset()
+            if preset:
+                config["params"]["create mask"] = preset["create_mask"]
+                config["params"]["directory mask"] = preset["directory_mask"]
+            else:
+                config["params"]["create mask"] = "0664"
+                config["params"]["directory mask"] = "0775"
 
         return config
 

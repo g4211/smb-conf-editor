@@ -9,6 +9,9 @@ import os
 # === アプリケーション情報 ===
 APP_NAME = "Samba設定エディター"
 APP_VERSION = "1.2.0"
+APP_LICENSE = "MIT License"
+APP_REPOSITORY_URL = "https://github.com/g4211/smb-conf-editor"
+APP_ISSUES_URL = "https://github.com/g4211/smb-conf-editor/issues"
 
 # === ファイルパス ===
 # Sambaメイン設定ファイルのパス
@@ -23,6 +26,43 @@ APP_CONFIG_DIR = os.path.expanduser("~/.config/smb-conf-editor")
 
 # 直接編集で使用するデフォルトのエディター (Ubuntu 24.04 デフォルト)
 DEFAULT_EDITOR = "gnome-text-editor"
+# デフォルトエディターの候補リスト（GUIエディター優先、CUIフォールバック）
+DEFAULT_EDITOR_CANDIDATES = [
+    "gnome-text-editor",  # Ubuntu 22.04+ (GNOME)
+    "gedit",              # GNOME（旧バージョン）
+    "kate",               # KDE
+    "mousepad",           # Xfce
+    "xed",                # Linux Mint
+    "pluma",              # MATE
+    "nano",               # CUI（ほぼ全環境に存在）
+    "vi",                 # CUI（必ず存在）
+]
+
+# エディターの種類定数
+EDITOR_TYPE_TERMINAL = "ターミナル"
+EDITOR_TYPE_GRAPHICAL = "グラフィカル"
+
+# デフォルトエディターの種類定義（内部保持）
+DEFAULT_EDITORS = {
+    "gnome-text-editor": EDITOR_TYPE_GRAPHICAL,
+    "gedit":             EDITOR_TYPE_GRAPHICAL,
+    "kate":              EDITOR_TYPE_GRAPHICAL,
+    "mousepad":          EDITOR_TYPE_GRAPHICAL,
+    "xed":               EDITOR_TYPE_GRAPHICAL,
+    "pluma":             EDITOR_TYPE_GRAPHICAL,
+    "nano":              EDITOR_TYPE_TERMINAL,
+    "vi":                EDITOR_TYPE_TERMINAL,
+}
+
+# ターミナルエミュレータの候補（CUIエディター起動用）
+# 各タプル: (cmd名, ベース引数リスト, コマンドを結合するか)
+TERMINAL_CANDIDATES = [
+    {"cmd": "gnome-terminal", "args": ["--wait", "--"], "join": False},
+    {"cmd": "konsole",        "args": ["-e"],           "join": False},
+    {"cmd": "xfce4-terminal", "args": ["-e"],           "join": True},
+    {"cmd": "mate-terminal",  "args": ["-e"],           "join": True},
+    {"cmd": "xterm",          "args": ["-e"],           "join": False},
+]
 # バックアップディレクトリのデフォルトパス
 DEFAULT_BACKUP_DIR = os.path.join(APP_CONFIG_DIR, "backups")
 # バックアップファイルの最大保持数
@@ -46,8 +86,9 @@ SYSTEM_SECTIONS = frozenset({
 })
 
 # 新規共有フォルダのデフォルト設定テンプレート
+# pathのデフォルトは /srv/samba/（FHS準拠、/home配下のアクセス権問題を回避）
 NEW_SHARE_TEMPLATE = {
-    "path": "",
+    "path": "/srv/samba/",
     "browseable": "yes",
     "read only": "no",
     "guest ok": "yes",
@@ -65,6 +106,13 @@ GUEST_SHARE_PARAMS = {
     "create mask": "0777",
     "directory mask": "0777",
 }
+
+# パーミッションプリセット（共有フォルダのアクセス権設定）
+PERMISSION_PRESETS = [
+    {"label": "全員が読み書き可能", "create_mask": "0666", "directory_mask": "0777"},
+    {"label": "一般的",         "create_mask": "0664", "directory_mask": "0775"},
+    {"label": "セキュア",       "create_mask": "0660", "directory_mask": "0770"},
+]
 
 # 非ゲスト（ユーザー指定）時に除外する設定項目のキー
 GUEST_ONLY_PARAMS = frozenset({

@@ -46,8 +46,22 @@ class ConfigManager:
                 print(f"警告: 設定ファイルの読み込みに失敗しました: {e}")
                 return self._defaults.copy()
         else:
-            # ファイルが存在しない場合はデフォルト設定を使用
-            return self._defaults.copy()
+            # ファイルが存在しない場合（初回起動）はデフォルト設定を使用
+            config = self._defaults.copy()
+            # インストール済みのエディターを自動検出してデフォルトに設定
+            config["editor"] = self._detect_default_editor()
+            return config
+
+    def _detect_default_editor(self) -> str:
+        """デフォルトエディターの候補から最初にインストールされているものを返す"""
+        import shutil
+        for candidate in const.DEFAULT_EDITOR_CANDIDATES:
+            # shutil.whichでコマンドの存在を確認
+            if shutil.which(candidate):
+                print(f"デフォルトエディターを自動検出: {candidate}")
+                return candidate
+        # どれも見つからない場合はフォールバック
+        return const.DEFAULT_EDITOR
 
     def save(self) -> None:
         """現在の設定をファイルに保存する"""
@@ -79,6 +93,78 @@ class ConfigManager:
     def get_all(self) -> dict:
         """全設定を辞書として取得する"""
         return self._config.copy()
+
+    def get_custom_editors(self) -> list[dict]:
+        """ユーザーが追加したカスタムエディターのリストを取得する"""
+        return self.get("custom_editors", [])
+
+    def set_custom_editors(self, editors: list[dict]) -> None:
+        """カスタムエディターのリストを保存する"""
+        self.set("custom_editors", editors)
+
+    def get_available_editors(self) -> list[dict]:
+        """
+        利用可能なエディターの一覧を返す。
+        デフォルトエディター + カスタムエディターのうち、
+        実行可能なもののみを返す。
+        戻り値: [{"name": str, "type": str, "command": str}, ...]
+        """
+        import shutil
+        available = []
+
+        # デフォルトエディターからインストール済みのものを追加
+        for name, editor_type in const.DEFAULT_EDITORS.items():
+            if shutil.which(name):
+                available.append({
+                    "name": name,
+                    "type": editor_type,
+                    "command": "",  # システムインストール済み
+                })
+
+        # カスタムエディターから利用可能なものを追加
+        for editor in self.get_custom_editors():
+            name = editor.get("name", "").strip()
+            command = editor.get("command", "").strip()
+            editor_type = editor.get("type", const.EDITOR_TYPE_GRAPHICAL)
+            if not name:
+                continue
+            # コマンドが空ならシステムインストール確認
+            if not command:
+                if shutil.which(name):
+                    available.append({"name": name, "type": editor_type, "command": ""})
+            else:
+                # コマンドの実行ファイル部分が存在するか確認
+                exec_path = command.split()[0] if command else ""
+                if os.path.isfile(exec_path) or shutil.which(exec_path):
+                    available.append({"name": name, "type": editor_type, "command": command})
+
+        return available
+
+    def get_editor_info(self, editor_name: str) -> dict | None:
+        """指定エディターの情報を取得する（名前で検索）"""
+        for editor in self.get_available_editors():
+            if editor["name"] == editor_name:
+                return editor
+        return None
+
+    def detect_terminal_emulator(self) -> dict | None:
+        """利用可能なターミナルエミュレータを検出する"""
+        import shutil
+        for terminal in const.TERMINAL_CANDIDATES:
+            if shutil.which(terminal["cmd"]):
+                return terminal
+        return None
+
+    def build_terminal_command(self, terminal: dict, editor_cmd: str, filepath: str) -> list[str]:
+        """ターミナルエミュレータ用のコマンドリストを構築する"""
+        base = [terminal["cmd"]] + terminal["args"]
+        if terminal.get("join", False):
+            # コマンドを1つの文字列として結合（xfce4-terminal等）
+            base.append(f"{editor_cmd} {filepath}")
+        else:
+            # コマンドとファイルを個別の引数として追加（gnome-terminal等）
+            base.extend([editor_cmd, filepath])
+        return base
 
     @property
     def config_path(self) -> str:

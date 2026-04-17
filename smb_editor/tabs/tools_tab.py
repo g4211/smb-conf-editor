@@ -215,10 +215,23 @@ class ToolsTab(ttk.Frame):
         editor_row = ttk.Frame(edit_frame)
         editor_row.pack(fill=tk.X, pady=(0, 8))
         ttk.Label(editor_row, text="使用するエディター:").pack(side=tk.LEFT, padx=(0, 5))
-        
+
+        # エディター選択用Combobox（readonlyで利用可能なもののみ表示）
         self._editor_var = tk.StringVar(value=self._app.config_manager.get("editor", const.DEFAULT_EDITOR))
-        ttk.Entry(editor_row, textvariable=self._editor_var, width=20).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(editor_row, text="確認", width=8, command=self._check_editor).pack(side=tk.LEFT, padx=(0, 5))
+        self._editor_combo = ttk.Combobox(
+            editor_row, textvariable=self._editor_var,
+            state="readonly", width=20
+        )
+        self._editor_combo.pack(side=tk.LEFT, padx=(0, 5))
+        # 選択変更時にconfig.jsonに自動保存
+        self._editor_combo.bind("<<ComboboxSelected>>", self._on_editor_selected)
+
+        # エディター管理ボタン
+        ttk.Button(
+            editor_row, text="エディター管理", width=12,
+            command=self._show_editor_manager
+        ).pack(side=tk.LEFT, padx=(0, 5))
+        # エディターで編集ボタン
         ttk.Button(editor_row, text="エディターで編集", width=14, command=self._direct_edit).pack(side=tk.LEFT)
 
         ttk.Label(
@@ -227,6 +240,12 @@ class ToolsTab(ttk.Frame):
                  "エディター終了後、変更があれば構文チェック→適用を実行します。",
             font=("", 9), foreground="gray"
         ).pack(anchor=tk.W)
+
+        # ターミナルエミュレータを検出してキャッシュ
+        self._cached_terminal = self._app.config_manager.detect_terminal_emulator()
+
+        # Comboboxのvaluesを初期化
+        self._refresh_editor_combobox()
 
     def _build_log_section(self, parent: tk.Widget) -> None:
         """ログファイルセクションを構築する"""
@@ -265,36 +284,48 @@ class ToolsTab(ttk.Frame):
     def _on_log_canvas_configure(self, event) -> None:
         self._log_canvas.itemconfig(self._log_canvas_window, width=event.width)
 
-    def _check_editor(self) -> None:
-        """エディターの存在確認を行う"""
+    def _on_editor_selected(self, event=None) -> None:
+        """Comboboxでエディターが選択された時、config.jsonに保存する"""
         editor = self._editor_var.get().strip()
-        if not editor:
-            messagebox.showwarning("入力エラー", "エディター名を入力してください", parent=self)
-            return
-
-        if system_utils.check_command_exists(editor):
-            messagebox.showinfo("確認結果", f"'{editor}' はインストールされています ✓", parent=self)
+        if editor:
             self._app.config_manager.set("editor", editor)
             self._app.config_manager.save()
-        else:
-            messagebox.showwarning(
-                "確認結果",
-                f"'{editor}' はインストールされていません ✗\n\n"
-                f"sudo apt install {editor} でインストールしてください",
-                parent=self
-            )
+
+    def _show_editor_manager(self) -> None:
+        """エディター管理ダイアログを表示する"""
+        from ..dialogs.editor_manager import show_editor_manager
+        show_editor_manager(
+            self, self._app.config_manager,
+            on_save=self._refresh_editor_combobox
+        )
+
+    def _refresh_editor_combobox(self) -> None:
+        """利用可能なエディター一覧でComboboxのvaluesを更新する"""
+        available = self._app.config_manager.get_available_editors()
+        names = [e["name"] for e in available]
+        self._editor_combo["values"] = names
+
+        # 現在の選択が利用可能リストに含まれていなければ先頭を選択
+        current = self._editor_var.get()
+        if current not in names and names:
+            self._editor_var.set(names[0])
+            self._app.config_manager.set("editor", names[0])
+            self._app.config_manager.save()
 
     def _direct_edit(self) -> None:
         """エディターで直接編集を実行する"""
-        editor = self._editor_var.get().strip()
-        if not editor:
-            messagebox.showwarning("入力エラー", "エディター名を入力してください", parent=self)
+        editor_name = self._editor_var.get().strip()
+        if not editor_name:
+            messagebox.showwarning("入力エラー", "エディターを選択してください", parent=self)
             return
 
-        if not system_utils.check_command_exists(editor):
+        # エディター情報を取得
+        editor_info = self._app.config_manager.get_editor_info(editor_name)
+        if not editor_info:
             messagebox.showerror(
                 "エラー",
-                f"エディター '{editor}' がインストールされていません",
+                f"エディター '{editor_name}' が利用できません。\n"
+                "エディター管理で設定を確認してください。",
                 parent=self
             )
             return
@@ -336,16 +367,42 @@ class ToolsTab(ttk.Frame):
             self._cleanup_temp(tmp_path)
             return
 
+        # エディター起動コマンドを構築（CUI/GUI判定）
+        editor_type = editor_info.get("type", const.EDITOR_TYPE_GRAPHICAL)
+        editor_cmd = editor_info.get("command", "") or editor_name
+
+        if editor_type == const.EDITOR_TYPE_TERMINAL:
+            # ターミナルエディター → ターミナルエミュレータ経由で起動
+            if not self._cached_terminal:
+                messagebox.showerror(
+                    "エラー",
+                    "ターミナルエミュレータが見つかりません。\n"
+                    "gnome-terminal, konsole, xterm等をインストールしてください。",
+                    parent=self
+                )
+                self._cleanup_temp(tmp_path)
+                return
+            launch_cmd = self._app.config_manager.build_terminal_command(
+                self._cached_terminal, editor_cmd, tmp_path
+            )
+        else:
+            # グラフィカルエディター → 直接起動
+            if editor_info.get("command"):
+                # カスタムコマンド（スペース区切りの引数あり）
+                launch_cmd = editor_cmd.split() + [tmp_path]
+            else:
+                launch_cmd = [editor_cmd, tmp_path]
+
         # エディターを起動
         messagebox.showinfo(
             "エディターで編集",
-            f"エディター '{editor}' で smb.conf を開きます。\n"
+            f"エディター '{editor_name}' で smb.conf を開きます。\n"
             "編集が完了したらファイルを保存してエディターを閉じてください。",
             parent=self
         )
 
         try:
-            subprocess.run([editor, tmp_path], timeout=3600)
+            subprocess.run(launch_cmd, timeout=3600)
         except subprocess.TimeoutExpired:
             messagebox.showwarning("タイムアウト", "エディターがタイムアウトしました", parent=self)
             self._cleanup_temp(tmp_path)
@@ -478,6 +535,8 @@ class ToolsTab(ttk.Frame):
             UserRow(self._user_list_frame, user, i + 2, self._app, self)
 
         self._refresh_log_list()
+        # エディターComboboxを更新
+        self._refresh_editor_combobox()
         self._editor_var.set(
             self._app.config_manager.get("editor", const.DEFAULT_EDITOR)
         )

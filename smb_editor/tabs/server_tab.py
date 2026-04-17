@@ -97,7 +97,8 @@ class ServerTab(ttk.Frame):
             param_frame = ttk.Frame(self._extra_frame)
             param_frame.pack(fill=tk.X, pady=(0, 5))
             ttk.Label(param_frame, text=f"{param_info['label']}:", width=20).pack(side=tk.LEFT)
-            var = tk.StringVar(value=param_info["default"])
+            # 初期値は空欄（load_dataでsmb.confの実際の値をセットする）
+            var = tk.StringVar(value="")
             ttk.Entry(param_frame, textvariable=var, width=40).pack(side=tk.LEFT, padx=(5, 0))
             self._extra_vars[param_info["key"]] = var
 
@@ -156,12 +157,13 @@ class ServerTab(ttk.Frame):
                     hosts_list.append(part)
             self._hosts_text.insert(tk.END, "\n".join(hosts_list))
 
-        # その他の設定
+        # その他の設定（smb.confの実際の値を反映、存在しない場合は空欄）
         for param_info in const.GLOBAL_EXTRA_PARAMS:
             key = param_info["key"]
             value = global_section.get_param(key)
-            if value is not None and key in self._extra_vars:
-                self._extra_vars[key].set(value)
+            if key in self._extra_vars:
+                # smb.confに値があればその値を、なければ空欄を設定
+                self._extra_vars[key].set(value if value is not None else "")
 
     def collect_changes(self, writer: SmbConfWriter) -> Optional[bool]:
         """

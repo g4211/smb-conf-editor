@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 import tkinter as tk
+import webbrowser
 from tkinter import ttk, messagebox
 
 try:
@@ -157,6 +158,9 @@ class SmbConfEditorApp:
 
     def _build_ui(self) -> None:
         """UIウィジェットを構築する"""
+        # メニューバーを構築
+        self._build_menubar()
+
         main_frame = ttk.Frame(self._root)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
@@ -164,6 +168,16 @@ class SmbConfEditorApp:
         ttk.Separator(main_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=5, pady=3)
         self._build_notebook(main_frame)
         self._build_statusbar()
+
+    def _build_menubar(self) -> None:
+        """メニューバーを構築する"""
+        menubar = tk.Menu(self._root)
+        self._root.config(menu=menubar)
+
+        # ヘルプメニュー
+        help_menu = tk.Menu(menubar, tearoff=0)
+        help_menu.add_command(label="バージョン情報", command=self._show_about_dialog)
+        menubar.add_cascade(label="ヘルプ", menu=help_menu)
 
     def _build_toolbar(self, parent: tk.Widget) -> None:
         """上部のツールバー（適用ボタンなど）を構築する"""
@@ -362,6 +376,85 @@ class SmbConfEditorApp:
     def refresh_samba_cache_and_reload(self) -> None:
         """Samba設定および全タブをキャッシュ情報を維持したまま再描画する"""
         self.reload_data()
+
+    def _show_about_dialog(self) -> None:
+        """バージョン情報ダイアログを表示する"""
+        about_win = tk.Toplevel(self._root)
+        about_win.title("バージョン情報")
+        about_win.geometry("520x480")
+        about_win.resizable(False, False)
+        about_win.transient(self._root)
+        about_win.grab_set()
+
+        # メインフレーム
+        main_frame = ttk.Frame(about_win, padding=20)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # アプリ名とバージョン
+        ttk.Label(
+            main_frame,
+            text=const.APP_NAME,
+            font=("", 18, "bold")
+        ).pack(pady=(0, 5))
+        ttk.Label(
+            main_frame,
+            text=f"v{const.APP_VERSION}",
+            font=("", 12)
+        ).pack(pady=(0, 3))
+        ttk.Label(
+            main_frame,
+            text=f"ライセンス: {const.APP_LICENSE}",
+            font=("", 9), foreground="gray"
+        ).pack(pady=(0, 15))
+
+        ttk.Separator(main_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=5)
+
+        # 情報セクション
+        info_frame = ttk.Frame(main_frame)
+        info_frame.pack(fill=tk.X, pady=(10, 0))
+
+        # 各情報行を表示するヘルパー関数
+        def add_info_row(parent, label_text, value_text, row):
+            """1行分の情報をGridで配置する"""
+            ttk.Label(parent, text=label_text, font=("", 9, "bold")).grid(
+                row=row, column=0, sticky="nw", padx=(0, 10), pady=3
+            )
+            ttk.Label(parent, text=value_text, font=("", 9), wraplength=350).grid(
+                row=row, column=1, sticky="w", pady=3
+            )
+
+        # 情報行を追加
+        add_info_row(info_frame, "設定ファイル:", self._config_manager.config_path, 0)
+        add_info_row(info_frame, "バックアップ先:", self._config_manager.get_backup_dir(), 1)
+        add_info_row(info_frame, "必要環境:", "Samba (samba, smbclient)\npolicykit-1 (polkitd, pkexec)", 2)
+
+        ttk.Separator(main_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
+
+        # リンクセクション
+        link_frame = ttk.Frame(main_frame)
+        link_frame.pack(fill=tk.X, pady=(0, 10))
+
+        def add_link_row(parent, label_text, url, row):
+            """クリック可能なリンク行を配置する"""
+            ttk.Label(parent, text=label_text, font=("", 9, "bold")).grid(
+                row=row, column=0, sticky="w", padx=(0, 10), pady=3
+            )
+            link_label = ttk.Label(
+                parent, text=url, font=("", 9),
+                foreground="#4A90D9", cursor="hand2"
+            )
+            link_label.grid(row=row, column=1, sticky="w", pady=3)
+            link_label.bind("<Button-1>", lambda e: webbrowser.open(url))
+
+        # リンク行を追加
+        add_link_row(link_frame, "プロジェクト:", const.APP_REPOSITORY_URL, 0)
+        add_link_row(link_frame, "問題報告:", const.APP_ISSUES_URL, 1)
+
+        # 閉じるボタン
+        ttk.Button(
+            main_frame, text="閉じる", width=10,
+            command=about_win.destroy
+        ).pack(pady=(10, 0))
 
     def run(self) -> None:
         """アプリケーションのメインループを開始する"""
