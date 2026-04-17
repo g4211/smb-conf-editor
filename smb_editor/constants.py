@@ -8,7 +8,7 @@ import os
 
 # === アプリケーション情報 ===
 APP_NAME = "Samba設定エディター"
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 APP_LICENSE = "MIT License"
 APP_REPOSITORY_URL = "https://github.com/g4211/smb-conf-editor"
 APP_ISSUES_URL = "https://github.com/g4211/smb-conf-editor/issues"
