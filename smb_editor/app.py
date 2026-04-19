@@ -72,6 +72,9 @@ class SmbConfEditorApp:
         # UIを構築
         self._build_ui()
 
+        # 閉じるボタンのイベントをフック
+        self._root.protocol("WM_DELETE_WINDOW", self._on_closing)
+
         # データを読み込む
         self.reload_data()
 
@@ -185,7 +188,8 @@ class SmbConfEditorApp:
         toolbar = ttk.Frame(parent)
         toolbar.pack(fill=tk.X, padx=5, pady=(5, 0))
 
-        self._apply_btn = ttk.Button(toolbar, text=UI.BTN_APPLY, command=self._on_apply_all)
+        # 適用ボタンを Accent.TButton スタイルで目立たせる
+        self._apply_btn = ttk.Button(toolbar, text=UI.BTN_APPLY, command=self._on_apply_all, style="Accent.TButton")
         self._apply_btn.pack(side=tk.LEFT, padx=(0, 10))
 
         ttk.Label(
@@ -295,6 +299,28 @@ class SmbConfEditorApp:
         else:
             error_msg = "\n".join(result.errors)
             messagebox.showerror("エラー", f"適用に失敗しました:\n\n{error_msg}", parent=self._root)
+
+    def _on_closing(self) -> None:
+        """アプリ終了時の処理"""
+        has_changes = False
+        
+        # 共有タブの簡易チェック（削除待ち、または新規入力中のカードがあるか）
+        if hasattr(self, '_shares_tab'):
+            for card in self._shares_tab._cards:
+                if card.is_deleted or (card.is_new and not card.is_empty):
+                    has_changes = True
+                    break
+        
+        if has_changes:
+            if not messagebox.askyesno(
+                "確認", 
+                "未適用の変更があります。\n破棄して終了しますか？", 
+                parent=self._root,
+                icon=messagebox.WARNING
+            ):
+                return
+                
+        self._root.destroy()
 
     def reload_data(self) -> None:
         """smb.confを再パースして全タブのデータを更新する"""

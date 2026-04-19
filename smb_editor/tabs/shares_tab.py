@@ -81,13 +81,16 @@ class ShareCard(ttk.LabelFrame):
 
         self._pending_label = ttk.Label(row1, text="📁 作成予定", foreground="#4CAF50")
 
-        ttk.Button(row1, text="参照", width=5, command=self._browse_directory).pack(side=tk.LEFT, padx=(0, 8))
+        self._browse_btn = ttk.Button(row1, text="参照", width=5, command=self._browse_directory)
+        self._browse_btn.pack(side=tk.LEFT, padx=(0, 8))
 
         self._readonly_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(row1, text="読み取り専用", variable=self._readonly_var).pack(side=tk.LEFT, padx=(0, 8))
+        self._readonly_cb = ttk.Checkbutton(row1, text="読み取り専用", variable=self._readonly_var)
+        self._readonly_cb.pack(side=tk.LEFT, padx=(0, 8))
 
         if not self._is_new and self._on_delete:
-            ttk.Button(row1, text="削除", width=5, command=self._confirm_delete).pack(side=tk.RIGHT)
+            self._delete_btn = ttk.Button(row1, text="削除", width=8, command=self._toggle_delete)
+            self._delete_btn.pack(side=tk.RIGHT)
 
     def _build_comment_section(self) -> None:
         """コメント行を構築"""
@@ -95,7 +98,8 @@ class ShareCard(ttk.LabelFrame):
         comment_frame.pack(fill=tk.X, pady=(0, 5))
         ttk.Label(comment_frame, text="コメント:").pack(side=tk.LEFT, padx=(0, 5))
         self._comment_var = tk.StringVar()
-        ttk.Entry(comment_frame, textvariable=self._comment_var, width=60).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._comment_entry = ttk.Entry(comment_frame, textvariable=self._comment_var, width=60)
+        self._comment_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
     def _build_access_section(self) -> None:
         """アクセス可否行（ゲスト、ユーザー一覧）を構築"""
@@ -103,8 +107,8 @@ class ShareCard(ttk.LabelFrame):
         access_frame.pack(fill=tk.X, pady=(0, 5))
 
         self._guest_var = tk.BooleanVar(value=self._is_new)
-        guest_cb = ttk.Checkbutton(access_frame, text="ゲスト", variable=self._guest_var, command=self._on_guest_toggled)
-        guest_cb.pack(side=tk.LEFT, padx=(0, 15))
+        self._guest_cb = ttk.Checkbutton(access_frame, text="ゲスト", variable=self._guest_var, command=self._on_guest_toggled)
+        self._guest_cb.pack(side=tk.LEFT, padx=(0, 15))
 
         self._user_vars: dict[str, tk.BooleanVar] = {}
         self._user_checkbuttons: dict[str, ttk.Checkbutton] = {}
@@ -293,18 +297,45 @@ class ShareCard(ttk.LabelFrame):
             else:
                 cb.config(state=tk.NORMAL)
 
-    def _confirm_delete(self) -> None:
-        """削除確認ダイアログを表示する"""
-        name = self._name_var.get() or "この共有フォルダ"
-        result = messagebox.askyesno(
-            "削除確認",
-            f"共有フォルダ '{name}' をsmb.confから削除しますか？\n\n"
-            "※ディレクトリ自体は削除されません",
-            parent=self
-        )
-        if result and self._on_delete:
+    def _set_state(self, state: str) -> None:
+        """カード内の入力ウィジェットの状態を変更する"""
+        self._name_entry.config(state=state)
+        self._path_entry.config(state=state)
+        if hasattr(self, "_browse_btn"):
+            self._browse_btn.config(state=state)
+        if hasattr(self, "_readonly_cb"):
+            self._readonly_cb.config(state=state)
+        if hasattr(self, "_comment_entry"):
+            self._comment_entry.config(state=state)
+        if hasattr(self, "_guest_cb"):
+            self._guest_cb.config(state=state)
+        self._perm_combo.config(state="readonly" if state == tk.NORMAL else tk.DISABLED)
+        
+        if state == tk.DISABLED:
+            for cb in self._user_checkbuttons.values():
+                cb.config(state=tk.DISABLED)
+        else:
+            self._on_guest_toggled()
+
+    def _toggle_delete(self) -> None:
+        """共有フォルダの削除状態を切り替える"""
+        if self._deleted:
+            # 復元する
+            self._deleted = False
+            self._set_state(tk.NORMAL)
+            self._delete_btn.config(text="削除")
+            if hasattr(self, "_delete_warning"):
+                self._delete_warning.destroy()
+                del self._delete_warning
+        else:
+            # 削除待ち状態にする
             self._deleted = True
-            self._on_delete(self)
+            self._set_state(tk.DISABLED)
+            self._delete_btn.config(text="元に戻す")
+            self._delete_warning = ttk.Label(
+                self, text="⚠ 「適用」をクリックすると削除されます", foreground="red"
+            )
+            self._delete_warning.pack(side=tk.BOTTOM, pady=5)
 
     @property
     def is_empty(self) -> bool:
@@ -515,7 +546,9 @@ class SharesTab(ttk.Frame):
         self._cards.append(new_card)
 
     def _on_card_delete(self, card: ShareCard) -> None:
-        card.pack_forget()
+        # UIから削除するのではなく、ShareCard自身が非活性化（グレーアウト）する仕組みにしたため
+        # ここでは特に何もしない。collect_changesで is_deleted をチェックして処理する。
+        pass
 
     def collect_changes(self, writer: SmbConfWriter) -> Optional[dict]:
         """

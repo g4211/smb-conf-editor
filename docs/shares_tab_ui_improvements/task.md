@@ -1,0 +1,5 @@
+- [x] `ShareCard` の入力を一括無効化するためのリファクタリング（各ウィジェットを変数に格納）。
+- [x] `ShareCard` の削除アクションを `_toggle_delete` に置き換え。
+- [x] `SharesTab` 側でカードを消去していた処理の削除。
+- [x] `app.py` にて適用ボタンに `Accent.TButton` を適用。
+- [x] `app.py` に終了時の未保存警告フックを追加。

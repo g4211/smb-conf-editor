@@ -61,8 +61,8 @@ class EditorRow:
 
         # [削除]ボタン
         self.delete_btn = ttk.Button(
-            parent, text="削除", width=5,
-            command=self._delete
+            parent, text="削除", width=8,
+            command=self._toggle_delete
         )
         self.delete_btn.grid(row=row_idx, column=4, padx=(2, 5), pady=3)
 
@@ -156,18 +156,30 @@ class EditorRow:
         else:
             self._show_warning("")
 
-    def _delete(self) -> None:
-        """行を削除する"""
-        self._deleted = True
-        # UIウィジェットを非表示にする
-        self.name_entry.grid_remove()
-        self.type_combo.grid_remove()
-        self.command_entry.grid_remove()
-        self.browse_btn.grid_remove()
-        self.delete_btn.grid_remove()
-        self.warning_label.grid_remove()
-        if self._on_delete:
-            self._on_delete(self)
+    def _toggle_delete(self) -> None:
+        """行の削除状態を切り替える"""
+        if self._deleted:
+            # 復元する
+            self._deleted = False
+            self.name_entry.config(state="normal")
+            self.type_combo.config(state="readonly")
+            self.command_entry.config(state="normal")
+            self.browse_btn.config(state="normal")
+            self.delete_btn.config(text="削除")
+            # 警告をクリアして再バリデーション
+            self._show_warning("")
+            self._on_command_focus_out()
+        else:
+            # 削除待ち状態にする
+            self._deleted = True
+            self.name_entry.config(state="disabled")
+            self.type_combo.config(state="disabled")
+            self.command_entry.config(state="disabled")
+            self.browse_btn.config(state="disabled")
+            self.delete_btn.config(text="元に戻す")
+            self._show_warning("⚠ 「適用」をクリックすると削除されます")
+            if self._on_delete:
+                self._on_delete(self)
 
     def validate(self) -> str | None:
         """バリデーション。エラーがあればメッセージを返す。空行はNone（スキップ）"""
@@ -303,6 +315,9 @@ def show_editor_manager(parent: tk.Widget, config_manager, on_save: callable = N
     action_frame = ttk.Frame(btn_frame)
     action_frame.pack(anchor=tk.CENTER)
 
+    # 初期の状態を保存しておく（未保存チェック用）
+    initial_editors = config_manager.get_custom_editors()
+
     def on_apply():
         """適用ボタンの処理（ダイアログは閉じない）"""
         # バリデーション
@@ -330,6 +345,10 @@ def show_editor_manager(parent: tk.Widget, config_manager, on_save: callable = N
         # config.jsonに保存
         config_manager.set_custom_editors(valid_editors)
         config_manager.save()
+
+        # 適用されたので、現在の状態を初期状態として更新する
+        nonlocal initial_editors
+        initial_editors = config_manager.get_custom_editors()
 
         # コールバック呼び出し（Comboboxの更新等）
         if on_save:
@@ -361,5 +380,26 @@ def show_editor_manager(parent: tk.Widget, config_manager, on_save: callable = N
         # 最下行に空行を追加
         add_row()
 
+    def on_closing():
+        """ダイアログを閉じる際の未保存チェック"""
+        current_editors = []
+        for row in rows:
+            data = row.get_data()
+            if data:
+                current_editors.append(data)
+        
+        if current_editors != initial_editors:
+            if not messagebox.askyesno(
+                "確認", 
+                "変更が適用されていません。\n破棄して閉じますか？", 
+                parent=dialog,
+                icon=messagebox.WARNING
+            ):
+                return  # 閉じない
+        
+        dialog.destroy()
+
+    dialog.protocol("WM_DELETE_WINDOW", on_closing)
+
     ttk.Button(action_frame, text="適用", width=8, command=on_apply).pack(side=tk.LEFT, padx=(0, 10))
-    ttk.Button(action_frame, text="閉じる", width=8, command=dialog.destroy).pack(side=tk.LEFT)
+    ttk.Button(action_frame, text="閉じる", width=8, command=on_closing).pack(side=tk.LEFT)
